@@ -1,0 +1,5 @@
+from "examples/employees.csv"
+filter age > 40
+filter department == "Engineering"
+select name, salary, age, department
+write "output.csv"

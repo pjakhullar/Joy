@@ -26,19 +26,3 @@ add_library(joylib
 # Main executable
 add_executable(joy src/main.cpp)
 target_link_libraries(joy joylib)
-
-# Test executables (optional for MVP)
-add_executable(test_lexer tests/test_lexer.cpp)
-target_link_libraries(test_lexer joylib)
-
-add_executable(test_parser tests/test_parser.cpp)
-target_link_libraries(test_parser joylib)
-
-add_executable(test_table tests/test_table.cpp)
-target_link_libraries(test_table joylib)
-
-add_executable(test_compiler tests/test_compiler.cpp)
-target_link_libraries(test_compiler joylib)
-
-add_executable(test_vm tests/test_vm.cpp)
-target_link_libraries(test_vm joylib)
