@@ -1,0 +1,42 @@
+[200~program          := pipeline EOF ;
+
+pipeline         := from_op ( op )* ;
+
+op               := filter_op
+                  | select_op
+                  | write_op ;
+
+from_op          := "from" string_literal ;
+
+filter_op        := "filter" expr ;
+
+select_op        := "select" column_list ;
+
+write_op         := "write" string_literal ;
+
+column_list      := column ( "," column )* ;
+
+column           := IDENT ;
+
+expr             := equality ;
+
+equality         := comparison ( ( "==" | "!=" ) comparison )* ;
+
+comparison       := term ( ( ">" | "<" | ">=" | "<=" ) term )* ;
+
+term             := factor ( ( "+" | "-" ) factor )* ;
+
+factor           := unary ( ( "*" | "/" ) unary )* ;
+
+unary            := ( "-" | "not" ) unary
+                  | primary ;
+
+primary          := NUMBER
+                  | STRING
+                  | column_ref
+                  | "(" expr ")" ;
+
+column_ref       := IDENT ;
+
+string_literal   := STRING ;
+
