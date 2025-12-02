@@ -64,6 +64,7 @@ private:
     // Execute individual operators
     void execute_scan(const PhysicalOp::ScanOp& op);
     void execute_filter(const PhysicalOp::FilterOp& op);
+    void execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op);
     void execute_project(const PhysicalOp::ProjectOp& op);
     void execute_write(const PhysicalOp::WriteOp& op);
 

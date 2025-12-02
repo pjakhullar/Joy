@@ -52,10 +52,25 @@ struct IRExpr {
 // ============================================================================
 
 enum class OpType {
-    SCAN,      // Read CSV into table
-    FILTER,    // Filter rows by predicate
-    PROJECT,   // Select specific columns
-    WRITE      // Write table to CSV
+    SCAN,             // Read CSV into table
+    FILTER,           // Filter rows by predicate (scalar, row-at-a-time)
+    VECTORIZED_FILTER,// Filter rows using vectorized operations (FAST!)
+    PROJECT,          // Select specific columns
+    WRITE             // Write table to CSV
+};
+
+// ============================================================================
+// Vectorized Filter Operations (for blazingly fast column operations)
+// ============================================================================
+
+enum class VectorOp {
+    // Comparison operators for vectorized filters
+    GT,   // Greater than
+    LT,   // Less than
+    GTE,  // Greater than or equal
+    LTE,  // Less than or equal
+    EQ,   // Equal
+    NEQ   // Not equal
 };
 
 struct PhysicalOp {
@@ -67,7 +82,16 @@ struct PhysicalOp {
     };
 
     struct FilterOp {
-        IRExpr predicate;
+        IRExpr predicate;  // Scalar expression (fallback for complex cases)
+    };
+
+    // Vectorized filter - processes entire column at once
+    // Example: "age > 30" → VectorizedFilterOp{"age", GT, int(30)}
+    struct VectorizedFilterOp {
+        std::string column_name;
+        VectorOp op;
+        // Scalar value to compare against (type depends on column)
+        std::variant<int64_t, double, std::string> value;
     };
 
     struct ProjectOp {
@@ -78,7 +102,7 @@ struct PhysicalOp {
         std::string filepath;
     };
 
-    std::variant<ScanOp, FilterOp, ProjectOp, WriteOp> data;
+    std::variant<ScanOp, FilterOp, VectorizedFilterOp, ProjectOp, WriteOp> data;
 };
 
 // ============================================================================

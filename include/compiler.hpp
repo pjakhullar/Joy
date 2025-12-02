@@ -4,6 +4,7 @@
 #include "ir.hpp"
 #include "table.hpp"
 #include <stdexcept>
+#include <optional>
 
 namespace joy {
 
@@ -39,10 +40,10 @@ private:
     void compile_binary(const BinaryExpr& node, IRExpr& result);
     void compile_unary(const UnaryExpr& node, IRExpr& result);
 
-    // Column name to index mapping (set during SCAN compilation)
-    // For MVP, we don't know schema at compile time, so LOAD_COLUMN
-    // uses column names; VM resolves at runtime
-    // (Post-MVP: add schema inference pass)
+    // Vectorization pattern detection
+    // Try to convert filter expression to vectorized operation
+    // Returns nullopt if expression is too complex
+    std::optional<PhysicalOp::VectorizedFilterOp> try_vectorize_filter(const Expr& expr);
 };
 
 } // namespace joy

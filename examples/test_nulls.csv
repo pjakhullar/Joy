@@ -1,0 +1,5 @@
+name,age,department,salary
+Alice,30,Engineering,75000
+Bob,,Marketing,
+Charlie,35,,65000
+,25,Sales,55000

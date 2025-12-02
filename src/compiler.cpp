@@ -45,11 +45,20 @@ PhysicalOp Compiler::compile_stmt(const Stmt& stmt) {
             op.type = OpType::SCAN;
             op.data = PhysicalOp::ScanOp{node.filepath};
         }
-        // FILTER expr → FILTER operator (with compiled expression)
+        // FILTER expr → Try vectorized path first, fall back to scalar
         else if constexpr (std::is_same_v<T, FilterStmt>) {
-            op.type = OpType::FILTER;
-            IRExpr predicate = compile_expr(*node.condition);  // Recursively compile expression
-            op.data = PhysicalOp::FilterOp{std::move(predicate)};
+            // Try to detect simple vectorizable pattern: column op scalar
+            auto vec_pattern = try_vectorize_filter(*node.condition);
+            if (vec_pattern.has_value()) {
+                // Use fast vectorized path
+                op.type = OpType::VECTORIZED_FILTER;
+                op.data = vec_pattern.value();
+            } else {
+                // Fall back to scalar row-at-a-time execution
+                op.type = OpType::FILTER;
+                IRExpr predicate = compile_expr(*node.condition);
+                op.data = PhysicalOp::FilterOp{std::move(predicate)};
+            }
         }
         // SELECT col1, col2 → PROJECT operator (column selection)
         else if constexpr (std::is_same_v<T, SelectStmt>) {
@@ -200,6 +209,105 @@ void Compiler::compile_unary(const UnaryExpr& node, IRExpr& result) {
     }
 
     result.instructions.push_back({op_code, 0});
+}
+
+// ============================================================================
+// Vectorization Pattern Detection
+// ============================================================================
+// Detects simple filter patterns that can be vectorized
+// Pattern: column comparison_op literal
+// Examples: age > 30, name == "Alice", salary <= 50000
+
+std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(const Expr& expr) {
+    // Only handle binary expressions
+    const auto* binary_node = std::get_if<BinaryExpr>(&expr.node);
+    if (!binary_node) {
+        return std::nullopt;
+    }
+
+    // Check if operator is a comparison
+    BinaryOp op = binary_node->op;
+    bool is_comparison = (op == BinaryOp::Gt || op == BinaryOp::Lt ||
+                         op == BinaryOp::Gte || op == BinaryOp::Lte ||
+                         op == BinaryOp::Eq || op == BinaryOp::Neq);
+    if (!is_comparison) {
+        return std::nullopt;
+    }
+
+    // Pattern 1: column op literal
+    const auto* left_col = std::get_if<ColumnRef>(&binary_node->left->node);
+    const auto* right_lit = std::get_if<LiteralExpr>(&binary_node->right->node);
+
+    if (left_col && right_lit) {
+        // Map AST operator to VectorOp
+        VectorOp vec_op;
+        switch (op) {
+            case BinaryOp::Gt:  vec_op = VectorOp::GT; break;
+            case BinaryOp::Lt:  vec_op = VectorOp::LT; break;
+            case BinaryOp::Gte: vec_op = VectorOp::GTE; break;
+            case BinaryOp::Lte: vec_op = VectorOp::LTE; break;
+            case BinaryOp::Eq:  vec_op = VectorOp::EQ; break;
+            case BinaryOp::Neq: vec_op = VectorOp::NEQ; break;
+            default: return std::nullopt;
+        }
+
+        // Extract literal value
+        PhysicalOp::VectorizedFilterOp result;
+        result.column_name = left_col->name;
+        result.op = vec_op;
+
+        // Store appropriate type of literal value
+        const auto& lit_value = right_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.value = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.value = std::get<double>(lit_value);
+        } else if (std::holds_alternative<std::string>(lit_value)) {
+            result.value = std::get<std::string>(lit_value);
+        } else {
+            return std::nullopt;  // Bool not supported for vectorized filters yet
+        }
+
+        return result;
+    }
+
+    // Pattern 2: literal op column (reverse operands)
+    const auto* left_lit = std::get_if<LiteralExpr>(&binary_node->left->node);
+    const auto* right_col = std::get_if<ColumnRef>(&binary_node->right->node);
+
+    if (left_lit && right_col) {
+        // Reverse the operator: 30 < age → age > 30
+        VectorOp vec_op;
+        switch (op) {
+            case BinaryOp::Gt:  vec_op = VectorOp::LT; break;   // 30 > age → age < 30
+            case BinaryOp::Lt:  vec_op = VectorOp::GT; break;   // 30 < age → age > 30
+            case BinaryOp::Gte: vec_op = VectorOp::LTE; break;  // 30 >= age → age <= 30
+            case BinaryOp::Lte: vec_op = VectorOp::GTE; break;  // 30 <= age → age >= 30
+            case BinaryOp::Eq:  vec_op = VectorOp::EQ; break;   // 30 == age → age == 30
+            case BinaryOp::Neq: vec_op = VectorOp::NEQ; break;  // 30 != age → age != 30
+            default: return std::nullopt;
+        }
+
+        PhysicalOp::VectorizedFilterOp result;
+        result.column_name = right_col->name;
+        result.op = vec_op;
+
+        const auto& lit_value = left_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.value = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.value = std::get<double>(lit_value);
+        } else if (std::holds_alternative<std::string>(lit_value)) {
+            result.value = std::get<std::string>(lit_value);
+        } else {
+            return std::nullopt;
+        }
+
+        return result;
+    }
+
+    // Complex expression - cannot vectorize
+    return std::nullopt;
 }
 
 } // namespace joy

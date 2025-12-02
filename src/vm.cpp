@@ -1,4 +1,5 @@
 #include "vm.hpp"
+#include "vectorized_ops.hpp"
 #include <variant>
 #include <iostream>
 
@@ -110,6 +111,9 @@ void VM::execute(const ExecutionPlan& plan) {
             }
             else if constexpr (std::is_same_v<T, PhysicalOp::FilterOp>) {
                 execute_filter(op_data);
+            }
+            else if constexpr (std::is_same_v<T, PhysicalOp::VectorizedFilterOp>) {
+                execute_vectorized_filter(op_data);
             }
             else if constexpr (std::is_same_v<T, PhysicalOp::ProjectOp>) {
                 execute_project(op_data);
@@ -242,6 +246,120 @@ void VM::execute_filter(const PhysicalOp::FilterOp& op) {
     }
 
     // Step 3: Replace current table with filtered result
+    current_table_ = std::move(result);
+}
+
+// VECTORIZED_FILTER operator: Filter using column-at-a-time operations
+// Much faster than row-at-a-time for simple comparisons
+// Example: filter age > 30 → processes entire age column at once
+void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
+    // Find the column
+    const Column* col = current_table_.get_column(op.column_name);
+    if (!col) {
+        throw RuntimeError("Column not found: " + op.column_name);
+    }
+
+    // Handle empty tables - nothing to filter
+    if (current_table_.num_rows == 0) {
+        return;  // Table is already empty, nothing to do
+    }
+
+    // Call appropriate vectorized comparison based on column type and operation
+    SelectionVector selection;
+
+    // Dispatch to type-specific vectorized operations
+    if (col->type == ColumnType::INT64) {
+        int64_t value = std::get<int64_t>(op.value);
+        switch (op.op) {
+            case VectorOp::GT:  selection = vec_gt_int64(*col, value); break;
+            case VectorOp::LT:  selection = vec_lt_int64(*col, value); break;
+            case VectorOp::GTE: selection = vec_gte_int64(*col, value); break;
+            case VectorOp::LTE: selection = vec_lte_int64(*col, value); break;
+            case VectorOp::EQ:  selection = vec_eq_int64(*col, value); break;
+            case VectorOp::NEQ: selection = vec_neq_int64(*col, value); break;
+        }
+    }
+    else if (col->type == ColumnType::DOUBLE) {
+        double value = std::get<double>(op.value);
+        switch (op.op) {
+            case VectorOp::GT:  selection = vec_gt_double(*col, value); break;
+            case VectorOp::LT:  selection = vec_lt_double(*col, value); break;
+            case VectorOp::GTE: selection = vec_gte_double(*col, value); break;
+            case VectorOp::LTE: selection = vec_lte_double(*col, value); break;
+            case VectorOp::EQ:  selection = vec_eq_double(*col, value); break;
+            case VectorOp::NEQ: selection = vec_neq_double(*col, value); break;
+        }
+    }
+    else if (col->type == ColumnType::STRING) {
+        const std::string& value = std::get<std::string>(op.value);
+        switch (op.op) {
+            case VectorOp::GT:  selection = vec_gt_string(*col, value); break;
+            case VectorOp::LT:  selection = vec_lt_string(*col, value); break;
+            case VectorOp::GTE: selection = vec_gte_string(*col, value); break;
+            case VectorOp::LTE: selection = vec_lte_string(*col, value); break;
+            case VectorOp::EQ:  selection = vec_eq_string(*col, value); break;
+            case VectorOp::NEQ: selection = vec_neq_string(*col, value); break;
+        }
+    }
+    else {
+        throw RuntimeError("Unsupported column type for vectorized filter");
+    }
+
+    // Build result table with matching rows (same approach as scalar filter)
+    Table result;
+
+    // Create empty result columns with same schema
+    for (const auto& src_col : current_table_.columns) {
+        Column new_col;
+        new_col.name = src_col.name;
+        new_col.type = src_col.type;
+
+        switch (src_col.type) {
+            case ColumnType::INT64:
+                new_col.data = std::vector<std::optional<int64_t>>{};
+                break;
+            case ColumnType::DOUBLE:
+                new_col.data = std::vector<std::optional<double>>{};
+                break;
+            case ColumnType::STRING:
+                new_col.data = std::vector<std::optional<std::string>>{};
+                break;
+            case ColumnType::BOOL:
+                new_col.data = std::vector<std::optional<bool>>{};
+                break;
+        }
+
+        result.add_column(std::move(new_col));
+    }
+
+    // Copy rows that passed the filter
+    for (size_t row = 0; row < current_table_.num_rows; ++row) {
+        if (selection[row]) {
+            // Copy this row
+            for (size_t col_idx = 0; col_idx < current_table_.columns.size(); ++col_idx) {
+                const Column& src_col = current_table_.columns[col_idx];
+                Column& dst_col = result.columns[col_idx];
+
+                if (src_col.is_null(row)) {
+                    switch (src_col.type) {
+                        case ColumnType::INT64:    dst_col.append_int(std::nullopt); break;
+                        case ColumnType::DOUBLE:   dst_col.append_double(std::nullopt); break;
+                        case ColumnType::STRING:   dst_col.append_string(std::nullopt); break;
+                        case ColumnType::BOOL:     dst_col.append_bool(std::nullopt); break;
+                    }
+                } else {
+                    switch (src_col.type) {
+                        case ColumnType::INT64:    dst_col.append_int(src_col.get_int(row)); break;
+                        case ColumnType::DOUBLE:   dst_col.append_double(src_col.get_double(row)); break;
+                        case ColumnType::STRING:   dst_col.append_string(src_col.get_string(row)); break;
+                        case ColumnType::BOOL:     dst_col.append_bool(src_col.get_bool(row)); break;
+                    }
+                }
+            }
+            result.num_rows++;
+        }
+    }
+
     current_table_ = std::move(result);
 }
 
