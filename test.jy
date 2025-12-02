@@ -1,5 +1,0 @@
-from "examples/employees.csv"
-filter age > 30
-filter department == "Engineering"
-select name, salary
-write "output.csv"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -8,7 +9,7 @@
 namespace joy {
 
 // ============================================================================
-// Column-major Table Representation
+// Column-major Table Representation with NULL support
 // ============================================================================
 
 enum class ColumnType {
@@ -22,28 +23,32 @@ struct Column {
     std::string name;
     ColumnType type;
 
-    // Type-erased storage (one variant active based on type)
+    // Type-erased storage using std::optional for NULL support
+    // std::nullopt represents NULL values (SQL-style NULL semantics)
     std::variant<
-        std::vector<int64_t>,
-        std::vector<double>,
-        std::vector<std::string>,
-        std::vector<bool>
+        std::vector<std::optional<int64_t>>,
+        std::vector<std::optional<double>>,
+        std::vector<std::optional<std::string>>,
+        std::vector<std::optional<bool>>
     > data;
 
     size_t size() const;
     void reserve(size_t n);
 
-    // Get typed value at index
+    // Check if value at index is NULL
+    bool is_null(size_t idx) const;
+
+    // Get typed value at index (throws if NULL or wrong type)
     int64_t get_int(size_t idx) const;
     double get_double(size_t idx) const;
     const std::string& get_string(size_t idx) const;
     bool get_bool(size_t idx) const;
 
     // Append typed value
-    void append_int(int64_t val);
-    void append_double(double val);
-    void append_string(std::string val);
-    void append_bool(bool val);
+    void append_int(std::optional<int64_t> val);
+    void append_double(std::optional<double> val);
+    void append_string(std::optional<std::string> val);
+    void append_bool(std::optional<bool> val);
 };
 
 struct Table {

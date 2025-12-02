@@ -22,10 +22,12 @@ public:
 // Runtime Value (Stack Value During Expression Evaluation)
 // ============================================================================
 
+// NULL is represented using std::monostate (SQL-style NULL semantics)
 struct Value {
-    std::variant<int64_t, double, std::string, bool> data;
+    std::variant<std::monostate, int64_t, double, std::string, bool> data;
 
     // Type queries
+    bool is_null() const;
     bool is_int() const;
     bool is_double() const;
     bool is_string() const;
@@ -38,6 +40,7 @@ struct Value {
     bool as_bool() const;
 
     // Constructors
+    static Value make_null();
     static Value make_int(int64_t val);
     static Value make_double(double val);
     static Value make_string(std::string val);
