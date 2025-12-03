@@ -268,26 +268,57 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
     SelectionVector selection;
 
     // Dispatch to type-specific vectorized operations
-    // Check for type mismatch between column and value
+    // Handle numeric type promotion: INT64 <-> DOUBLE
     if (col->type == ColumnType::INT64) {
-        if (!std::holds_alternative<int64_t>(op.value)) {
-            throw RuntimeError("Type mismatch: column is INT64 but value is not");
-        }
-        int64_t value = std::get<int64_t>(op.value);
-        switch (op.op) {
-            case VectorOp::GT:  selection = vec_gt_int64(*col, value); break;
-            case VectorOp::LT:  selection = vec_lt_int64(*col, value); break;
-            case VectorOp::GTE: selection = vec_gte_int64(*col, value); break;
-            case VectorOp::LTE: selection = vec_lte_int64(*col, value); break;
-            case VectorOp::EQ:  selection = vec_eq_int64(*col, value); break;
-            case VectorOp::NEQ: selection = vec_neq_int64(*col, value); break;
+        if (std::holds_alternative<int64_t>(op.value)) {
+            // INT64 column + INT64 literal (exact match)
+            int64_t value = std::get<int64_t>(op.value);
+            switch (op.op) {
+                case VectorOp::GT:  selection = vec_gt_int64(*col, value); break;
+                case VectorOp::LT:  selection = vec_lt_int64(*col, value); break;
+                case VectorOp::GTE: selection = vec_gte_int64(*col, value); break;
+                case VectorOp::LTE: selection = vec_lte_int64(*col, value); break;
+                case VectorOp::EQ:  selection = vec_eq_int64(*col, value); break;
+                case VectorOp::NEQ: selection = vec_neq_int64(*col, value); break;
+            }
+        } else if (std::holds_alternative<double>(op.value)) {
+            // INT64 column + DOUBLE literal: Promote int column to double for comparison
+            // This matches scalar execution behavior
+            double value = std::get<double>(op.value);
+            // Convert INT64 column to double on-the-fly for comparison
+            const auto& int_data = std::get<std::vector<std::optional<int64_t>>>(col->data);
+            selection.resize(int_data.size());
+            for (size_t i = 0; i < int_data.size(); ++i) {
+                if (!int_data[i].has_value()) {
+                    selection[i] = false;
+                    continue;
+                }
+                double promoted_val = static_cast<double>(int_data[i].value());
+                switch (op.op) {
+                    case VectorOp::GT:  selection[i] = promoted_val > value; break;
+                    case VectorOp::LT:  selection[i] = promoted_val < value; break;
+                    case VectorOp::GTE: selection[i] = promoted_val >= value; break;
+                    case VectorOp::LTE: selection[i] = promoted_val <= value; break;
+                    case VectorOp::EQ:  selection[i] = promoted_val == value; break;
+                    case VectorOp::NEQ: selection[i] = promoted_val != value; break;
+                }
+            }
+        } else {
+            throw RuntimeError("Type mismatch: INT64 column requires numeric value");
         }
     }
     else if (col->type == ColumnType::DOUBLE) {
-        if (!std::holds_alternative<double>(op.value)) {
-            throw RuntimeError("Type mismatch: column is DOUBLE but value is not");
+        // DOUBLE column accepts both DOUBLE and INT64 literals
+        double value;
+        if (std::holds_alternative<double>(op.value)) {
+            value = std::get<double>(op.value);
+        } else if (std::holds_alternative<int64_t>(op.value)) {
+            // Promote INT64 literal to DOUBLE
+            value = static_cast<double>(std::get<int64_t>(op.value));
+        } else {
+            throw RuntimeError("Type mismatch: DOUBLE column requires numeric value");
         }
-        double value = std::get<double>(op.value);
+
         switch (op.op) {
             case VectorOp::GT:  selection = vec_gt_double(*col, value); break;
             case VectorOp::LT:  selection = vec_lt_double(*col, value); break;
