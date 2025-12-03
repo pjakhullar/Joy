@@ -268,7 +268,11 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
     SelectionVector selection;
 
     // Dispatch to type-specific vectorized operations
+    // Check for type mismatch between column and value
     if (col->type == ColumnType::INT64) {
+        if (!std::holds_alternative<int64_t>(op.value)) {
+            throw RuntimeError("Type mismatch: column is INT64 but value is not");
+        }
         int64_t value = std::get<int64_t>(op.value);
         switch (op.op) {
             case VectorOp::GT:  selection = vec_gt_int64(*col, value); break;
@@ -280,6 +284,9 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
         }
     }
     else if (col->type == ColumnType::DOUBLE) {
+        if (!std::holds_alternative<double>(op.value)) {
+            throw RuntimeError("Type mismatch: column is DOUBLE but value is not");
+        }
         double value = std::get<double>(op.value);
         switch (op.op) {
             case VectorOp::GT:  selection = vec_gt_double(*col, value); break;
@@ -291,6 +298,9 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
         }
     }
     else if (col->type == ColumnType::STRING) {
+        if (!std::holds_alternative<std::string>(op.value)) {
+            throw RuntimeError("Type mismatch: column is STRING but value is not");
+        }
         const std::string& value = std::get<std::string>(op.value);
         switch (op.op) {
             case VectorOp::GT:  selection = vec_gt_string(*col, value); break;
