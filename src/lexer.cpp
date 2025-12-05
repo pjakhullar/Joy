@@ -12,8 +12,9 @@ namespace joy {
 // This allows O(1) lookup to distinguish keywords from identifiers.
 // Example: "from" -> TokenType::FROM, but "age" -> TokenType::IDENT
 static const std::unordered_map<std::string, TokenType> keywords = {
-    {"from", TokenType::FROM},   {"filter", TokenType::FILTER}, {"select", TokenType::SELECT},
-    {"write", TokenType::WRITE}, {"not", TokenType::NOT},
+    {"from", TokenType::FROM},       {"filter", TokenType::FILTER},
+    {"select", TokenType::SELECT},   {"write", TokenType::WRITE},
+    {"transform", TokenType::TRANSFORM}, {"not", TokenType::NOT},
 };
 
 // ============================================================================
@@ -94,6 +95,10 @@ Token Lexer::scan_token() {
         return make_token(TokenType::LPAREN);
     case ')':
         return make_token(TokenType::RPAREN);
+    case '?':
+        return make_token(TokenType::QUESTION);
+    case ':':
+        return make_token(TokenType::COLON);
 
     // Two-character operators (need lookahead)
     case '<':
@@ -107,10 +112,10 @@ Token Lexer::scan_token() {
             return make_token(TokenType::GREATER_EQUAL);
         return make_token(TokenType::GREATER);
     case '=':
-        // Must be '==' (single '=' is not allowed in our language)
+        // Could be '=' or '=='
         if (match('='))
             return make_token(TokenType::EQUAL_EQUAL);
-        return make_error("Unexpected character '='");
+        return make_token(TokenType::EQUAL);
     case '!':
         // Must be '!=' (single '!' is not allowed, use 'not')
         if (match('='))

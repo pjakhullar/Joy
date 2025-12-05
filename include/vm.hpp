@@ -66,6 +66,9 @@ private:
     void execute_filter(const PhysicalOp::FilterOp& op);
     void execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op);
     void execute_project(const PhysicalOp::ProjectOp& op);
+    void execute_transform(const PhysicalOp::TransformOp& op);
+    void execute_vectorized_transform(const PhysicalOp::VectorizedTransformOp& op);
+    void execute_vectorized_ternary_transform(const PhysicalOp::VectorizedTernaryTransformOp& op);
     void execute_write(const PhysicalOp::WriteOp& op);
 
     // Evaluate expression bytecode for a single row

@@ -46,6 +46,8 @@ std::vector<Stmt> Parser::parse_pipeline() {
             statements.push_back(parse_filter_stmt());
         } else if (check(TokenType::SELECT)) {
             statements.push_back(parse_select_stmt());
+        } else if (check(TokenType::TRANSFORM)) {
+            statements.push_back(parse_transform_stmt());
         } else if (check(TokenType::WRITE)) {
             statements.push_back(parse_write_stmt());
         } else {
@@ -98,6 +100,20 @@ Stmt Parser::parse_select_stmt() {
     return stmt;
 }
 
+// Parse: transform column_name = expression
+// Grammar: transform_stmt ::= TRANSFORM IDENT EQUAL expr
+// Example: transform gain_class = gain > 1000 ? "high" : "low"
+Stmt Parser::parse_transform_stmt() {
+    consume(TokenType::TRANSFORM, "Expected 'transform'");
+    Token col_name = consume(TokenType::IDENT, "Expected column name");
+    consume(TokenType::EQUAL, "Expected '=' after column name");
+    auto expression = parse_expr();
+
+    Stmt stmt;
+    stmt.node = TransformStmt{col_name.lexeme, std::move(expression)};
+    return stmt;
+}
+
 // Parse: write "filepath.csv"
 // Grammar: write_stmt ::= WRITE STRING
 Stmt Parser::parse_write_stmt() {
@@ -126,7 +142,27 @@ Stmt Parser::parse_write_stmt() {
 // Entry point for expression parsing
 // Grammar: expr ::= equality
 std::unique_ptr<Expr> Parser::parse_expr() {
-    return parse_equality();
+    return parse_ternary();
+}
+
+// Parse ternary conditional: condition ? true_value : false_value
+// Grammar: ternary ::= equality ("?" ternary ":" ternary)?
+// Right-associative: a ? b ? c : d : e  ==  a ? (b ? c : d) : e
+std::unique_ptr<Expr> Parser::parse_ternary() {
+    auto condition = parse_equality();
+
+    if (match(TokenType::QUESTION)) {
+        auto true_branch = parse_ternary();   // Right-associative recursion
+        consume(TokenType::COLON, "Expected ':' after true branch of ternary");
+        auto false_branch = parse_ternary();  // Right-associative recursion
+
+        auto expr = std::make_unique<Expr>();
+        expr->node = TernaryExpr{std::move(condition), std::move(true_branch),
+                                 std::move(false_branch)};
+        return expr;
+    }
+
+    return condition;
 }
 
 // Parse equality operators: == !=

@@ -61,9 +61,15 @@ struct UnaryExpr {
     std::unique_ptr<Expr> operand;
 };
 
+struct TernaryExpr {
+    std::unique_ptr<Expr> condition;
+    std::unique_ptr<Expr> true_branch;
+    std::unique_ptr<Expr> false_branch;
+};
+
 // Expression wrapper
 struct Expr {
-    std::variant<LiteralExpr, ColumnRef, BinaryExpr, UnaryExpr> node;
+    std::variant<LiteralExpr, ColumnRef, BinaryExpr, UnaryExpr, TernaryExpr> node;
 };
 
 // ============================================================================
@@ -82,13 +88,18 @@ struct SelectStmt {
     std::vector<std::string> columns;
 };
 
+struct TransformStmt {
+    std::string column_name;
+    std::unique_ptr<Expr> expression;
+};
+
 struct WriteStmt {
     std::string filepath;
 };
 
 // Statement wrapper
 struct Stmt {
-    std::variant<FromStmt, FilterStmt, SelectStmt, WriteStmt> node;
+    std::variant<FromStmt, FilterStmt, SelectStmt, TransformStmt, WriteStmt> node;
 };
 
 // ============================================================================

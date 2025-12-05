@@ -4,6 +4,8 @@
 #include <variant>
 #include <vector>
 
+#include "vectorized_ops.hpp"  // For VectorArithOp
+
 namespace joy {
 
 // ============================================================================
@@ -35,7 +37,10 @@ struct IRExpr {
         GTE,
 
         // Logical
-        NOT
+        NOT,
+
+        // Ternary conditional
+        TERNARY  // Pop 3: condition, true_val, false_val; push result
     };
 
     struct Instruction {
@@ -52,11 +57,14 @@ struct IRExpr {
 // ============================================================================
 
 enum class OpType {
-    SCAN,               // Read CSV into table
-    FILTER,             // Filter rows by predicate (scalar, row-at-a-time)
-    VECTORIZED_FILTER,  // Filter rows using vectorized operations (FAST!)
-    PROJECT,            // Select specific columns
-    WRITE               // Write table to CSV
+    SCAN,                          // Read CSV into table
+    FILTER,                        // Filter rows by predicate (scalar, row-at-a-time)
+    VECTORIZED_FILTER,             // Filter rows using vectorized operations (FAST!)
+    PROJECT,                       // Select specific columns
+    TRANSFORM,                     // Add/update column with expression (scalar)
+    VECTORIZED_TRANSFORM,          // Add/update column with vectorized arithmetic (FAST!)
+    VECTORIZED_TERNARY_TRANSFORM,  // Add/update column with vectorized ternary (FAST!)
+    WRITE                          // Write table to CSV
 };
 
 // ============================================================================
@@ -98,11 +106,61 @@ struct PhysicalOp {
         std::vector<std::string> columns;
     };
 
+    struct TransformOp {
+        std::string column_name;
+        IRExpr expression;
+    };
+
+    // Vectorized transform - processes entire columns at once (FAST!)
+    // Only handles simple patterns: column op column, column op scalar
+    // Example: "total = price * quantity" → VectorizedTransformOp{...}
+    struct VectorizedTransformOp {
+        std::string column_name;
+        VectorArithOp op;  // ADD, SUB, MUL, DIV
+
+        // Operands can be either column names or scalar values
+        // If is_*_column is true, use *_column_name; otherwise use *_scalar
+        bool is_left_column;
+        std::string left_column_name;
+        std::variant<int64_t, double> left_scalar;
+
+        bool is_right_column;
+        std::string right_column_name;
+        std::variant<int64_t, double> right_scalar;
+
+        // Result type (inferred from operand types)
+        ColumnType result_type;
+    };
+
+    // Vectorized ternary transform - vectorized conditional
+    // Pattern: condition ? true_val : false_val (all vectorized)
+    // Example: "class = score > 90 ? \"A\" : \"B\"" → VectorizedTernaryTransformOp{...}
+    struct VectorizedTernaryTransformOp {
+        std::string column_name;
+
+        // Condition (must be a comparison that can be vectorized)
+        VectorizedFilterOp condition;  // Reuse vectorized filter for condition
+
+        // True/false values can be columns or scalars
+        bool is_true_column;
+        std::string true_column_name;
+        std::variant<int64_t, double, std::string> true_scalar;
+
+        bool is_false_column;
+        std::string false_column_name;
+        std::variant<int64_t, double, std::string> false_scalar;
+
+        // Result type
+        ColumnType result_type;
+    };
+
     struct WriteOp {
         std::string filepath;
     };
 
-    std::variant<ScanOp, FilterOp, VectorizedFilterOp, ProjectOp, WriteOp> data;
+    std::variant<ScanOp, FilterOp, VectorizedFilterOp, ProjectOp, TransformOp,
+                 VectorizedTransformOp, VectorizedTernaryTransformOp, WriteOp>
+        data;
 };
 
 // ============================================================================

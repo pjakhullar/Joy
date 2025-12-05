@@ -67,6 +67,27 @@ PhysicalOp Compiler::compile_stmt(const Stmt& stmt) {
                 op.type = OpType::PROJECT;
                 op.data = PhysicalOp::ProjectOp{node.columns};
             }
+            // TRANSFORM column = expr → Try vectorized first, fall back to scalar
+            else if constexpr (std::is_same_v<T, TransformStmt>) {
+                // Try vectorized ternary first (depth limit = 1)
+                auto vec_ternary = try_vectorize_ternary_transform(node.column_name, *node.expression, 1);
+                if (vec_ternary.has_value()) {
+                    op.type = OpType::VECTORIZED_TERNARY_TRANSFORM;
+                    op.data = vec_ternary.value();
+                } else {
+                    // Try vectorized arithmetic
+                    auto vec_arith = try_vectorize_arith_transform(node.column_name, *node.expression);
+                    if (vec_arith.has_value()) {
+                        op.type = OpType::VECTORIZED_TRANSFORM;
+                        op.data = vec_arith.value();
+                    } else {
+                        // Fall back to scalar evaluation
+                        op.type = OpType::TRANSFORM;
+                        IRExpr expression = compile_expr(*node.expression);
+                        op.data = PhysicalOp::TransformOp{node.column_name, std::move(expression)};
+                    }
+                }
+            }
             // WRITE "file.csv" → WRITE operator (save data to file)
             else if constexpr (std::is_same_v<T, WriteStmt>) {
                 op.type = OpType::WRITE;
@@ -110,6 +131,8 @@ IRExpr Compiler::compile_expr(const Expr& expr) {
                 compile_binary(node, result);
             } else if constexpr (std::is_same_v<T, UnaryExpr>) {
                 compile_unary(node, result);
+            } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+                compile_ternary(node, result);
             }
         },
         expr.node);
@@ -231,6 +254,33 @@ void Compiler::compile_unary(const UnaryExpr& node, IRExpr& result) {
     }
 
     result.instructions.push_back({op_code, 0});
+}
+
+// Compile ternary conditional expression into bytecode
+// Example: age > 30 ? "senior" : "junior"
+//   AST:      TernaryExpr(BinaryExpr(GT, ...), Literal("senior"), Literal("junior"))
+//   Bytecode: [LOAD_COLUMN "age", PUSH_INT 30, GT,
+//              PUSH_STRING "senior", PUSH_STRING "junior", TERNARY]
+//   Stack:    [] → [age_val] → [age_val, 30] → [bool]
+//             → [bool, "senior"] → [bool, "senior", "junior"] → [result]
+void Compiler::compile_ternary(const TernaryExpr& node, IRExpr& result) {
+    // Compile condition expression (should evaluate to bool)
+    IRExpr condition = compile_expr(*node.condition);
+    result.instructions.insert(result.instructions.end(), condition.instructions.begin(),
+                               condition.instructions.end());
+
+    // Compile true branch (value if condition is true)
+    IRExpr true_branch = compile_expr(*node.true_branch);
+    result.instructions.insert(result.instructions.end(), true_branch.instructions.begin(),
+                               true_branch.instructions.end());
+
+    // Compile false branch (value if condition is false)
+    IRExpr false_branch = compile_expr(*node.false_branch);
+    result.instructions.insert(result.instructions.end(), false_branch.instructions.begin(),
+                               false_branch.instructions.end());
+
+    // Emit TERNARY instruction (pops 3 values: condition, true_val, false_val; pushes result)
+    result.instructions.push_back({IRExpr::OpCode::TERNARY, 0});
 }
 
 // ============================================================================
@@ -355,6 +405,209 @@ std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(con
 
     // Complex expression - cannot vectorize
     return std::nullopt;
+}
+
+// ============================================================================
+// Transform Vectorization Pattern Detection
+// ============================================================================
+
+// Try to vectorize simple arithmetic patterns
+// Pattern: column arith_op column/literal
+// Examples: price * quantity, value * 2, base + offset
+std::optional<PhysicalOp::VectorizedTransformOp> Compiler::try_vectorize_arith_transform(
+    const std::string& column_name, const Expr& expr) {
+    // Only handle binary expressions
+    const auto* binary_node = std::get_if<BinaryExpr>(&expr.node);
+    if (!binary_node) {
+        return std::nullopt;
+    }
+
+    // Check if operator is arithmetic
+    BinaryOp op = binary_node->op;
+    bool is_arithmetic =
+        (op == BinaryOp::Add || op == BinaryOp::Sub || op == BinaryOp::Mul || op == BinaryOp::Div);
+    if (!is_arithmetic) {
+        return std::nullopt;
+    }
+
+    // Map to VectorArithOp
+    VectorArithOp vec_op;
+    switch (op) {
+    case BinaryOp::Add:
+        vec_op = VectorArithOp::ADD;
+        break;
+    case BinaryOp::Sub:
+        vec_op = VectorArithOp::SUB;
+        break;
+    case BinaryOp::Mul:
+        vec_op = VectorArithOp::MUL;
+        break;
+    case BinaryOp::Div:
+        vec_op = VectorArithOp::DIV;
+        break;
+    default:
+        return std::nullopt;
+    }
+
+    // BOTH operands must be simple (ColumnRef OR LiteralExpr)
+    const auto* left_col = std::get_if<ColumnRef>(&binary_node->left->node);
+    const auto* left_lit = std::get_if<LiteralExpr>(&binary_node->left->node);
+    const auto* right_col = std::get_if<ColumnRef>(&binary_node->right->node);
+    const auto* right_lit = std::get_if<LiteralExpr>(&binary_node->right->node);
+
+    if (!left_col && !left_lit)
+        return std::nullopt;  // Nested - bail out
+    if (!right_col && !right_lit)
+        return std::nullopt;  // Nested - bail out
+
+    PhysicalOp::VectorizedTransformOp result;
+    result.column_name = column_name;
+    result.op = vec_op;
+
+    // Process left operand
+    if (left_col) {
+        result.is_left_column = true;
+        result.left_column_name = left_col->name;
+    } else {
+        result.is_left_column = false;
+        const auto& lit_value = left_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.left_scalar = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.left_scalar = std::get<double>(lit_value);
+        } else {
+            return std::nullopt;  // Only numeric
+        }
+    }
+
+    // Process right operand
+    if (right_col) {
+        result.is_right_column = true;
+        result.right_column_name = right_col->name;
+    } else {
+        result.is_right_column = false;
+        const auto& lit_value = right_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.right_scalar = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.right_scalar = std::get<double>(lit_value);
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    // Infer result type (promote to double if any operand is double)
+    bool has_double_literal = false;
+    if (!result.is_left_column && std::holds_alternative<double>(result.left_scalar))
+        has_double_literal = true;
+    if (!result.is_right_column && std::holds_alternative<double>(result.right_scalar))
+        has_double_literal = true;
+
+    // IMPORTANT: Reject mixed-type operations (would need type coercion)
+    // If we have a double literal but we're referencing columns, we'd need to know
+    // the column types at compile time, which we don't. So conservatively reject.
+    // This falls back to scalar evaluation which handles type coercion properly.
+    if (has_double_literal && (result.is_left_column || result.is_right_column)) {
+        // Mixed types - would need runtime type coercion
+        // Example: INT64_column * 0.9 (DOUBLE scalar)
+        // Fall back to scalar path which handles this
+        return std::nullopt;
+    }
+
+    result.result_type = has_double_literal ? ColumnType::DOUBLE : ColumnType::INT64;
+
+    return result;
+}
+
+// Try to vectorize ternary patterns with depth limit
+// Pattern: condition ? true_val : false_val
+// Depth limit prevents exponential explosion
+std::optional<PhysicalOp::VectorizedTernaryTransformOp> Compiler::try_vectorize_ternary_transform(
+    const std::string& column_name, const Expr& expr, int max_depth) {
+    if (max_depth <= 0) {
+        return std::nullopt;  // Hit depth limit
+    }
+
+    // Only handle ternary expressions
+    const auto* ternary_node = std::get_if<TernaryExpr>(&expr.node);
+    if (!ternary_node) {
+        return std::nullopt;
+    }
+
+    // Try to vectorize the condition (must be a simple comparison)
+    auto condition_vec = try_vectorize_filter(*ternary_node->condition);
+    if (!condition_vec.has_value()) {
+        return std::nullopt;  // Condition too complex
+    }
+
+    PhysicalOp::VectorizedTernaryTransformOp result;
+    result.column_name = column_name;
+    result.condition = condition_vec.value();
+
+    // Process true branch (must be simple: ColumnRef or LiteralExpr)
+    const auto* true_col = std::get_if<ColumnRef>(&ternary_node->true_branch->node);
+    const auto* true_lit = std::get_if<LiteralExpr>(&ternary_node->true_branch->node);
+
+    if (true_col) {
+        result.is_true_column = true;
+        result.true_column_name = true_col->name;
+    } else if (true_lit) {
+        result.is_true_column = false;
+        const auto& lit_value = true_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.true_scalar = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.true_scalar = std::get<double>(lit_value);
+        } else if (std::holds_alternative<std::string>(lit_value)) {
+            result.true_scalar = std::get<std::string>(lit_value);
+        } else {
+            return std::nullopt;
+        }
+    } else {
+        return std::nullopt;  // True branch too complex
+    }
+
+    // Process false branch (must be simple: ColumnRef or LiteralExpr)
+    const auto* false_col = std::get_if<ColumnRef>(&ternary_node->false_branch->node);
+    const auto* false_lit = std::get_if<LiteralExpr>(&ternary_node->false_branch->node);
+
+    if (false_col) {
+        result.is_false_column = true;
+        result.false_column_name = false_col->name;
+    } else if (false_lit) {
+        result.is_false_column = false;
+        const auto& lit_value = false_lit->value.value;
+        if (std::holds_alternative<int64_t>(lit_value)) {
+            result.false_scalar = std::get<int64_t>(lit_value);
+        } else if (std::holds_alternative<double>(lit_value)) {
+            result.false_scalar = std::get<double>(lit_value);
+        } else if (std::holds_alternative<std::string>(lit_value)) {
+            result.false_scalar = std::get<std::string>(lit_value);
+        } else {
+            return std::nullopt;
+        }
+    } else {
+        return std::nullopt;  // False branch too complex
+    }
+
+    // Infer result type from branches
+    // If either is string, result is string
+    // If either is double, result is double
+    // Otherwise, int
+    ColumnType result_type = ColumnType::INT64;
+    if (!result.is_true_column && std::holds_alternative<std::string>(result.true_scalar))
+        result_type = ColumnType::STRING;
+    if (!result.is_false_column && std::holds_alternative<std::string>(result.false_scalar))
+        result_type = ColumnType::STRING;
+    if (result_type != ColumnType::STRING) {
+        if (!result.is_true_column && std::holds_alternative<double>(result.true_scalar))
+            result_type = ColumnType::DOUBLE;
+        if (!result.is_false_column && std::holds_alternative<double>(result.false_scalar))
+            result_type = ColumnType::DOUBLE;
+    }
+    result.result_type = result_type;
+
+    return result;
 }
 
 }  // namespace joy

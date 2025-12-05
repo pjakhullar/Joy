@@ -15,6 +15,7 @@ enum class TokenType {
     FILTER,
     SELECT,
     WRITE,
+    TRANSFORM,
     NOT,
 
     // Literals
@@ -27,12 +28,15 @@ enum class TokenType {
     MINUS,          // -
     STAR,           // *
     SLASH,          // /
+    EQUAL,          // =
     EQUAL_EQUAL,    // ==
     BANG_EQUAL,     // !=
     LESS,           // <
     GREATER,        // >
     LESS_EQUAL,     // <=
     GREATER_EQUAL,  // >=
+    QUESTION,       // ?
+    COLON,          // :
 
     // Punctuation
     COMMA,   // ,

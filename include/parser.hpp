@@ -50,10 +50,12 @@ private:
     Stmt parse_from_stmt();
     Stmt parse_filter_stmt();
     Stmt parse_select_stmt();
+    Stmt parse_transform_stmt();
     Stmt parse_write_stmt();
 
     // Expression parsing (precedence climbing)
     std::unique_ptr<Expr> parse_expr();
+    std::unique_ptr<Expr> parse_ternary();
     std::unique_ptr<Expr> parse_equality();
     std::unique_ptr<Expr> parse_comparison();
     std::unique_ptr<Expr> parse_term();

@@ -39,11 +39,18 @@ private:
     void compile_column_ref(const ColumnRef& node, IRExpr& result);
     void compile_binary(const BinaryExpr& node, IRExpr& result);
     void compile_unary(const UnaryExpr& node, IRExpr& result);
+    void compile_ternary(const TernaryExpr& node, IRExpr& result);
 
     // Vectorization pattern detection
     // Try to convert filter expression to vectorized operation
     // Returns nullopt if expression is too complex
     std::optional<PhysicalOp::VectorizedFilterOp> try_vectorize_filter(const Expr& expr);
+
+    // Try to convert transform expressions to vectorized operations
+    std::optional<PhysicalOp::VectorizedTransformOp> try_vectorize_arith_transform(
+        const std::string& column_name, const Expr& expr);
+    std::optional<PhysicalOp::VectorizedTernaryTransformOp> try_vectorize_ternary_transform(
+        const std::string& column_name, const Expr& expr, int max_depth);
 };
 
 }  // namespace joy
