@@ -1,10 +1,11 @@
 #pragma once
 
-#include "ir.hpp"
-#include "table.hpp"
 #include <stdexcept>
 #include <variant>
 #include <vector>
+
+#include "ir.hpp"
+#include "table.hpp"
 
 namespace joy {
 
@@ -14,8 +15,7 @@ namespace joy {
 
 class RuntimeError : public std::runtime_error {
 public:
-    explicit RuntimeError(const std::string& message)
-        : std::runtime_error(message) {}
+    explicit RuntimeError(const std::string& message) : std::runtime_error(message) {}
 };
 
 // ============================================================================
@@ -75,4 +75,4 @@ private:
     std::vector<Value> stack_;
 };
 
-} // namespace joy
+}  // namespace joy

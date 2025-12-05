@@ -1,7 +1,9 @@
 #include "vm.hpp"
-#include "vectorized_ops.hpp"
-#include <variant>
+
 #include <iostream>
+#include <variant>
+
+#include "vectorized_ops.hpp"
 
 namespace joy {
 
@@ -103,25 +105,23 @@ Value Value::make_bool(bool val) {
 void VM::execute(const ExecutionPlan& plan) {
     for (const auto& op : plan.operators) {
         // Pattern match on operator type and dispatch to appropriate handler
-        std::visit([this](const auto& op_data) {
-            using T = std::decay_t<decltype(op_data)>;
+        std::visit(
+            [this](const auto& op_data) {
+                using T = std::decay_t<decltype(op_data)>;
 
-            if constexpr (std::is_same_v<T, PhysicalOp::ScanOp>) {
-                execute_scan(op_data);
-            }
-            else if constexpr (std::is_same_v<T, PhysicalOp::FilterOp>) {
-                execute_filter(op_data);
-            }
-            else if constexpr (std::is_same_v<T, PhysicalOp::VectorizedFilterOp>) {
-                execute_vectorized_filter(op_data);
-            }
-            else if constexpr (std::is_same_v<T, PhysicalOp::ProjectOp>) {
-                execute_project(op_data);
-            }
-            else if constexpr (std::is_same_v<T, PhysicalOp::WriteOp>) {
-                execute_write(op_data);
-            }
-        }, op.data);
+                if constexpr (std::is_same_v<T, PhysicalOp::ScanOp>) {
+                    execute_scan(op_data);
+                } else if constexpr (std::is_same_v<T, PhysicalOp::FilterOp>) {
+                    execute_filter(op_data);
+                } else if constexpr (std::is_same_v<T, PhysicalOp::VectorizedFilterOp>) {
+                    execute_vectorized_filter(op_data);
+                } else if constexpr (std::is_same_v<T, PhysicalOp::ProjectOp>) {
+                    execute_project(op_data);
+                } else if constexpr (std::is_same_v<T, PhysicalOp::WriteOp>) {
+                    execute_write(op_data);
+                }
+            },
+            op.data);
     }
 }
 
@@ -160,18 +160,18 @@ void VM::execute_filter(const PhysicalOp::FilterOp& op) {
         // Initialize empty vector of the appropriate optional type
         // We don't know final size yet, so start empty
         switch (col.type) {
-            case ColumnType::INT64:
-                new_col.data = std::vector<std::optional<int64_t>>{};
-                break;
-            case ColumnType::DOUBLE:
-                new_col.data = std::vector<std::optional<double>>{};
-                break;
-            case ColumnType::STRING:
-                new_col.data = std::vector<std::optional<std::string>>{};
-                break;
-            case ColumnType::BOOL:
-                new_col.data = std::vector<std::optional<bool>>{};
-                break;
+        case ColumnType::INT64:
+            new_col.data = std::vector<std::optional<int64_t>>{};
+            break;
+        case ColumnType::DOUBLE:
+            new_col.data = std::vector<std::optional<double>>{};
+            break;
+        case ColumnType::STRING:
+            new_col.data = std::vector<std::optional<std::string>>{};
+            break;
+        case ColumnType::BOOL:
+            new_col.data = std::vector<std::optional<bool>>{};
+            break;
         }
 
         result.add_column(std::move(new_col));
@@ -210,34 +210,34 @@ void VM::execute_filter(const PhysicalOp::FilterOp& op) {
                 if (src_col.is_null(row)) {
                     // Copy NULL value
                     switch (src_col.type) {
-                        case ColumnType::INT64:
-                            dst_col.append_int(std::nullopt);
-                            break;
-                        case ColumnType::DOUBLE:
-                            dst_col.append_double(std::nullopt);
-                            break;
-                        case ColumnType::STRING:
-                            dst_col.append_string(std::nullopt);
-                            break;
-                        case ColumnType::BOOL:
-                            dst_col.append_bool(std::nullopt);
-                            break;
+                    case ColumnType::INT64:
+                        dst_col.append_int(std::nullopt);
+                        break;
+                    case ColumnType::DOUBLE:
+                        dst_col.append_double(std::nullopt);
+                        break;
+                    case ColumnType::STRING:
+                        dst_col.append_string(std::nullopt);
+                        break;
+                    case ColumnType::BOOL:
+                        dst_col.append_bool(std::nullopt);
+                        break;
                     }
                 } else {
                     // Copy non-NULL value
                     switch (src_col.type) {
-                        case ColumnType::INT64:
-                            dst_col.append_int(src_col.get_int(row));
-                            break;
-                        case ColumnType::DOUBLE:
-                            dst_col.append_double(src_col.get_double(row));
-                            break;
-                        case ColumnType::STRING:
-                            dst_col.append_string(src_col.get_string(row));
-                            break;
-                        case ColumnType::BOOL:
-                            dst_col.append_bool(src_col.get_bool(row));
-                            break;
+                    case ColumnType::INT64:
+                        dst_col.append_int(src_col.get_int(row));
+                        break;
+                    case ColumnType::DOUBLE:
+                        dst_col.append_double(src_col.get_double(row));
+                        break;
+                    case ColumnType::STRING:
+                        dst_col.append_string(src_col.get_string(row));
+                        break;
+                    case ColumnType::BOOL:
+                        dst_col.append_bool(src_col.get_bool(row));
+                        break;
                     }
                 }
             }
@@ -274,12 +274,24 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
             // INT64 column + INT64 literal (exact match)
             int64_t value = std::get<int64_t>(op.value);
             switch (op.op) {
-                case VectorOp::GT:  selection = vec_gt_int64(*col, value); break;
-                case VectorOp::LT:  selection = vec_lt_int64(*col, value); break;
-                case VectorOp::GTE: selection = vec_gte_int64(*col, value); break;
-                case VectorOp::LTE: selection = vec_lte_int64(*col, value); break;
-                case VectorOp::EQ:  selection = vec_eq_int64(*col, value); break;
-                case VectorOp::NEQ: selection = vec_neq_int64(*col, value); break;
+            case VectorOp::GT:
+                selection = vec_gt_int64(*col, value);
+                break;
+            case VectorOp::LT:
+                selection = vec_lt_int64(*col, value);
+                break;
+            case VectorOp::GTE:
+                selection = vec_gte_int64(*col, value);
+                break;
+            case VectorOp::LTE:
+                selection = vec_lte_int64(*col, value);
+                break;
+            case VectorOp::EQ:
+                selection = vec_eq_int64(*col, value);
+                break;
+            case VectorOp::NEQ:
+                selection = vec_neq_int64(*col, value);
+                break;
             }
         } else if (std::holds_alternative<double>(op.value)) {
             // INT64 column + DOUBLE literal: Promote int column to double for comparison
@@ -295,19 +307,30 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
                 }
                 double promoted_val = static_cast<double>(int_data[i].value());
                 switch (op.op) {
-                    case VectorOp::GT:  selection[i] = promoted_val > value; break;
-                    case VectorOp::LT:  selection[i] = promoted_val < value; break;
-                    case VectorOp::GTE: selection[i] = promoted_val >= value; break;
-                    case VectorOp::LTE: selection[i] = promoted_val <= value; break;
-                    case VectorOp::EQ:  selection[i] = promoted_val == value; break;
-                    case VectorOp::NEQ: selection[i] = promoted_val != value; break;
+                case VectorOp::GT:
+                    selection[i] = promoted_val > value;
+                    break;
+                case VectorOp::LT:
+                    selection[i] = promoted_val < value;
+                    break;
+                case VectorOp::GTE:
+                    selection[i] = promoted_val >= value;
+                    break;
+                case VectorOp::LTE:
+                    selection[i] = promoted_val <= value;
+                    break;
+                case VectorOp::EQ:
+                    selection[i] = promoted_val == value;
+                    break;
+                case VectorOp::NEQ:
+                    selection[i] = promoted_val != value;
+                    break;
                 }
             }
         } else {
             throw RuntimeError("Type mismatch: INT64 column requires numeric value");
         }
-    }
-    else if (col->type == ColumnType::DOUBLE) {
+    } else if (col->type == ColumnType::DOUBLE) {
         // DOUBLE column accepts both DOUBLE and INT64 literals
         double value;
         if (std::holds_alternative<double>(op.value)) {
@@ -320,29 +343,51 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
         }
 
         switch (op.op) {
-            case VectorOp::GT:  selection = vec_gt_double(*col, value); break;
-            case VectorOp::LT:  selection = vec_lt_double(*col, value); break;
-            case VectorOp::GTE: selection = vec_gte_double(*col, value); break;
-            case VectorOp::LTE: selection = vec_lte_double(*col, value); break;
-            case VectorOp::EQ:  selection = vec_eq_double(*col, value); break;
-            case VectorOp::NEQ: selection = vec_neq_double(*col, value); break;
+        case VectorOp::GT:
+            selection = vec_gt_double(*col, value);
+            break;
+        case VectorOp::LT:
+            selection = vec_lt_double(*col, value);
+            break;
+        case VectorOp::GTE:
+            selection = vec_gte_double(*col, value);
+            break;
+        case VectorOp::LTE:
+            selection = vec_lte_double(*col, value);
+            break;
+        case VectorOp::EQ:
+            selection = vec_eq_double(*col, value);
+            break;
+        case VectorOp::NEQ:
+            selection = vec_neq_double(*col, value);
+            break;
         }
-    }
-    else if (col->type == ColumnType::STRING) {
+    } else if (col->type == ColumnType::STRING) {
         if (!std::holds_alternative<std::string>(op.value)) {
             throw RuntimeError("Type mismatch: column is STRING but value is not");
         }
         const std::string& value = std::get<std::string>(op.value);
         switch (op.op) {
-            case VectorOp::GT:  selection = vec_gt_string(*col, value); break;
-            case VectorOp::LT:  selection = vec_lt_string(*col, value); break;
-            case VectorOp::GTE: selection = vec_gte_string(*col, value); break;
-            case VectorOp::LTE: selection = vec_lte_string(*col, value); break;
-            case VectorOp::EQ:  selection = vec_eq_string(*col, value); break;
-            case VectorOp::NEQ: selection = vec_neq_string(*col, value); break;
+        case VectorOp::GT:
+            selection = vec_gt_string(*col, value);
+            break;
+        case VectorOp::LT:
+            selection = vec_lt_string(*col, value);
+            break;
+        case VectorOp::GTE:
+            selection = vec_gte_string(*col, value);
+            break;
+        case VectorOp::LTE:
+            selection = vec_lte_string(*col, value);
+            break;
+        case VectorOp::EQ:
+            selection = vec_eq_string(*col, value);
+            break;
+        case VectorOp::NEQ:
+            selection = vec_neq_string(*col, value);
+            break;
         }
-    }
-    else {
+    } else {
         throw RuntimeError("Unsupported column type for vectorized filter");
     }
 
@@ -356,18 +401,18 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
         new_col.type = src_col.type;
 
         switch (src_col.type) {
-            case ColumnType::INT64:
-                new_col.data = std::vector<std::optional<int64_t>>{};
-                break;
-            case ColumnType::DOUBLE:
-                new_col.data = std::vector<std::optional<double>>{};
-                break;
-            case ColumnType::STRING:
-                new_col.data = std::vector<std::optional<std::string>>{};
-                break;
-            case ColumnType::BOOL:
-                new_col.data = std::vector<std::optional<bool>>{};
-                break;
+        case ColumnType::INT64:
+            new_col.data = std::vector<std::optional<int64_t>>{};
+            break;
+        case ColumnType::DOUBLE:
+            new_col.data = std::vector<std::optional<double>>{};
+            break;
+        case ColumnType::STRING:
+            new_col.data = std::vector<std::optional<std::string>>{};
+            break;
+        case ColumnType::BOOL:
+            new_col.data = std::vector<std::optional<bool>>{};
+            break;
         }
 
         result.add_column(std::move(new_col));
@@ -383,17 +428,33 @@ void VM::execute_vectorized_filter(const PhysicalOp::VectorizedFilterOp& op) {
 
                 if (src_col.is_null(row)) {
                     switch (src_col.type) {
-                        case ColumnType::INT64:    dst_col.append_int(std::nullopt); break;
-                        case ColumnType::DOUBLE:   dst_col.append_double(std::nullopt); break;
-                        case ColumnType::STRING:   dst_col.append_string(std::nullopt); break;
-                        case ColumnType::BOOL:     dst_col.append_bool(std::nullopt); break;
+                    case ColumnType::INT64:
+                        dst_col.append_int(std::nullopt);
+                        break;
+                    case ColumnType::DOUBLE:
+                        dst_col.append_double(std::nullopt);
+                        break;
+                    case ColumnType::STRING:
+                        dst_col.append_string(std::nullopt);
+                        break;
+                    case ColumnType::BOOL:
+                        dst_col.append_bool(std::nullopt);
+                        break;
                     }
                 } else {
                     switch (src_col.type) {
-                        case ColumnType::INT64:    dst_col.append_int(src_col.get_int(row)); break;
-                        case ColumnType::DOUBLE:   dst_col.append_double(src_col.get_double(row)); break;
-                        case ColumnType::STRING:   dst_col.append_string(src_col.get_string(row)); break;
-                        case ColumnType::BOOL:     dst_col.append_bool(src_col.get_bool(row)); break;
+                    case ColumnType::INT64:
+                        dst_col.append_int(src_col.get_int(row));
+                        break;
+                    case ColumnType::DOUBLE:
+                        dst_col.append_double(src_col.get_double(row));
+                        break;
+                    case ColumnType::STRING:
+                        dst_col.append_string(src_col.get_string(row));
+                        break;
+                    case ColumnType::BOOL:
+                        dst_col.append_bool(src_col.get_bool(row));
+                        break;
                     }
                 }
             }
@@ -448,27 +509,26 @@ Value VM::eval_expr(const IRExpr& expr, size_t row_idx) {
     // This is a classic "fetch-decode-execute" loop
     for (const auto& instr : expr.instructions) {
         switch (instr.op) {
-
             // ================================================================
             // PUSH Instructions - Put values onto stack
             // ================================================================
             // These are "leaf" operations - they don't consume stack values
 
-            case IRExpr::OpCode::PUSH_INT:
-                stack_.push_back(Value::make_int(std::get<int64_t>(instr.operand)));
-                break;
+        case IRExpr::OpCode::PUSH_INT:
+            stack_.push_back(Value::make_int(std::get<int64_t>(instr.operand)));
+            break;
 
-            case IRExpr::OpCode::PUSH_DOUBLE:
-                stack_.push_back(Value::make_double(std::get<double>(instr.operand)));
-                break;
+        case IRExpr::OpCode::PUSH_DOUBLE:
+            stack_.push_back(Value::make_double(std::get<double>(instr.operand)));
+            break;
 
-            case IRExpr::OpCode::PUSH_STRING:
-                stack_.push_back(Value::make_string(std::get<std::string>(instr.operand)));
-                break;
+        case IRExpr::OpCode::PUSH_STRING:
+            stack_.push_back(Value::make_string(std::get<std::string>(instr.operand)));
+            break;
 
-            case IRExpr::OpCode::PUSH_BOOL:
-                stack_.push_back(Value::make_bool(std::get<bool>(instr.operand)));
-                break;
+        case IRExpr::OpCode::PUSH_BOOL:
+            stack_.push_back(Value::make_bool(std::get<bool>(instr.operand)));
+            break;
 
             // ================================================================
             // LOAD_COLUMN - Load value from current row (NULL support)
@@ -478,37 +538,37 @@ Value VM::eval_expr(const IRExpr& expr, size_t row_idx) {
             // Example: LOAD_COLUMN "age" when row_idx=2 loads age[2]
             // SQL NULL semantics: if cell is NULL, push NULL value
 
-            case IRExpr::OpCode::LOAD_COLUMN: {
-                std::string col_name = std::get<std::string>(instr.operand);
-                const Column* col = current_table_.get_column(col_name);
-                if (!col) {
-                    throw RuntimeError("Column not found: " + col_name);
-                }
+        case IRExpr::OpCode::LOAD_COLUMN: {
+            std::string col_name = std::get<std::string>(instr.operand);
+            const Column* col = current_table_.get_column(col_name);
+            if (!col) {
+                throw RuntimeError("Column not found: " + col_name);
+            }
 
-                // Check if value is NULL first
-                if (col->is_null(row_idx)) {
-                    stack_.push_back(Value::make_null());
-                    break;
-                }
-
-                // Load value from column at current row index
-                // Type depends on column type
-                switch (col->type) {
-                    case ColumnType::INT64:
-                        stack_.push_back(Value::make_int(col->get_int(row_idx)));
-                        break;
-                    case ColumnType::DOUBLE:
-                        stack_.push_back(Value::make_double(col->get_double(row_idx)));
-                        break;
-                    case ColumnType::STRING:
-                        stack_.push_back(Value::make_string(col->get_string(row_idx)));
-                        break;
-                    case ColumnType::BOOL:
-                        stack_.push_back(Value::make_bool(col->get_bool(row_idx)));
-                        break;
-                }
+            // Check if value is NULL first
+            if (col->is_null(row_idx)) {
+                stack_.push_back(Value::make_null());
                 break;
             }
+
+            // Load value from column at current row index
+            // Type depends on column type
+            switch (col->type) {
+            case ColumnType::INT64:
+                stack_.push_back(Value::make_int(col->get_int(row_idx)));
+                break;
+            case ColumnType::DOUBLE:
+                stack_.push_back(Value::make_double(col->get_double(row_idx)));
+                break;
+            case ColumnType::STRING:
+                stack_.push_back(Value::make_string(col->get_string(row_idx)));
+                break;
+            case ColumnType::BOOL:
+                stack_.push_back(Value::make_bool(col->get_bool(row_idx)));
+                break;
+            }
+            break;
+        }
 
             // ================================================================
             // Arithmetic Instructions - Binary Operations
@@ -520,112 +580,120 @@ Value VM::eval_expr(const IRExpr& expr, size_t row_idx) {
             //   4. Push result
             // Note: Order matters! a - b is different from b - a
 
-            case IRExpr::OpCode::ADD: {
-                Value b = stack_.back(); stack_.pop_back();  // Right operand
-                Value a = stack_.back(); stack_.pop_back();  // Left operand
+        case IRExpr::OpCode::ADD: {
+            Value b = stack_.back();
+            stack_.pop_back();  // Right operand
+            Value a = stack_.back();
+            stack_.pop_back();  // Left operand
 
-                // SQL NULL semantics: NULL + anything = NULL
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_null());
-                }
-                // Type coercion: int + int = int, anything with double = double
-                else if (a.is_int() && b.is_int()) {
-                    stack_.push_back(Value::make_int(a.as_int() + b.as_int()));
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    // Promote to double if either operand is double
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    stack_.push_back(Value::make_double(a_val + b_val));
-                } else {
-                    throw RuntimeError("Cannot add non-numeric types");
-                }
-                break;
+            // SQL NULL semantics: NULL + anything = NULL
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_null());
             }
-
-            case IRExpr::OpCode::SUB: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
-
-                // SQL NULL semantics: NULL - anything = NULL
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_null());
-                }
-                else if (a.is_int() && b.is_int()) {
-                    stack_.push_back(Value::make_int(a.as_int() - b.as_int()));
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    stack_.push_back(Value::make_double(a_val - b_val));
-                } else {
-                    throw RuntimeError("Cannot subtract non-numeric types");
-                }
-                break;
+            // Type coercion: int + int = int, anything with double = double
+            else if (a.is_int() && b.is_int()) {
+                stack_.push_back(Value::make_int(a.as_int() + b.as_int()));
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                // Promote to double if either operand is double
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                stack_.push_back(Value::make_double(a_val + b_val));
+            } else {
+                throw RuntimeError("Cannot add non-numeric types");
             }
+            break;
+        }
 
-            case IRExpr::OpCode::MUL: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+        case IRExpr::OpCode::SUB: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                // SQL NULL semantics: NULL * anything = NULL
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_null());
-                }
-                else if (a.is_int() && b.is_int()) {
-                    stack_.push_back(Value::make_int(a.as_int() * b.as_int()));
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    stack_.push_back(Value::make_double(a_val * b_val));
-                } else {
-                    throw RuntimeError("Cannot multiply non-numeric types");
-                }
-                break;
+            // SQL NULL semantics: NULL - anything = NULL
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_null());
+            } else if (a.is_int() && b.is_int()) {
+                stack_.push_back(Value::make_int(a.as_int() - b.as_int()));
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                stack_.push_back(Value::make_double(a_val - b_val));
+            } else {
+                throw RuntimeError("Cannot subtract non-numeric types");
             }
+            break;
+        }
 
-            case IRExpr::OpCode::DIV: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+        case IRExpr::OpCode::MUL: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                // SQL NULL semantics: NULL / anything = NULL
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_null());
-                }
-                // Check for division by zero
-                else if (a.is_int() && b.is_int()) {
-                    if (b.as_int() == 0) throw RuntimeError("Division by zero");
-                    stack_.push_back(Value::make_int(a.as_int() / b.as_int()));
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    if (b_val == 0.0) throw RuntimeError("Division by zero");
-                    stack_.push_back(Value::make_double(a_val / b_val));
-                } else {
-                    throw RuntimeError("Cannot divide non-numeric types");
-                }
-                break;
+            // SQL NULL semantics: NULL * anything = NULL
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_null());
+            } else if (a.is_int() && b.is_int()) {
+                stack_.push_back(Value::make_int(a.as_int() * b.as_int()));
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                stack_.push_back(Value::make_double(a_val * b_val));
+            } else {
+                throw RuntimeError("Cannot multiply non-numeric types");
             }
+            break;
+        }
+
+        case IRExpr::OpCode::DIV: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
+
+            // SQL NULL semantics: NULL / anything = NULL
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_null());
+            }
+            // Check for division by zero
+            else if (a.is_int() && b.is_int()) {
+                if (b.as_int() == 0)
+                    throw RuntimeError("Division by zero");
+                stack_.push_back(Value::make_int(a.as_int() / b.as_int()));
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                if (b_val == 0.0)
+                    throw RuntimeError("Division by zero");
+                stack_.push_back(Value::make_double(a_val / b_val));
+            } else {
+                throw RuntimeError("Cannot divide non-numeric types");
+            }
+            break;
+        }
 
             // ================================================================
             // Unary Arithmetic - Negation
             // ================================================================
             // Pops one value, pushes negated result
 
-            case IRExpr::OpCode::NEG: {
-                Value a = stack_.back(); stack_.pop_back();
+        case IRExpr::OpCode::NEG: {
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                // SQL NULL semantics: -NULL = NULL
-                if (a.is_null()) {
-                    stack_.push_back(Value::make_null());
-                }
-                else if (a.is_int()) {
-                    stack_.push_back(Value::make_int(-a.as_int()));
-                } else if (a.is_double()) {
-                    stack_.push_back(Value::make_double(-a.as_double()));
-                } else {
-                    throw RuntimeError("Cannot negate non-numeric value");
-                }
-                break;
+            // SQL NULL semantics: -NULL = NULL
+            if (a.is_null()) {
+                stack_.push_back(Value::make_null());
+            } else if (a.is_int()) {
+                stack_.push_back(Value::make_int(-a.as_int()));
+            } else if (a.is_double()) {
+                stack_.push_back(Value::make_double(-a.as_double()));
+            } else {
+                throw RuntimeError("Cannot negate non-numeric value");
             }
+            break;
+        }
 
             // ================================================================
             // Comparison Instructions - Always return bool
@@ -635,204 +703,216 @@ Value VM::eval_expr(const IRExpr& expr, size_t row_idx) {
             // Type coercion: int can compare with double
             // SQL NULL semantics: NULL compared to anything returns false
 
-            case IRExpr::OpCode::EQ: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+        case IRExpr::OpCode::EQ: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                // SQL NULL semantics: NULL == anything is false (use IS NULL for NULL checks)
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
-
-                bool result = false;
-                // int == int
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() == b.as_int();
-                }
-                // int == double or double == int or double == double
-                else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val == b_val;
-                }
-                // string == string
-                else if (a.is_string() && b.is_string()) {
-                    result = a.as_string() == b.as_string();
-                }
-                // bool == bool
-                else if (a.is_bool() && b.is_bool()) {
-                    result = a.as_bool() == b.as_bool();
-                }
-                // Different types → error (strict type checking)
-                else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
-
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL == anything is false (use IS NULL for NULL checks)
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
 
-            case IRExpr::OpCode::NEQ: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+            bool result = false;
+            // int == int
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() == b.as_int();
+            }
+            // int == double or double == int or double == double
+            else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val == b_val;
+            }
+            // string == string
+            else if (a.is_string() && b.is_string()) {
+                result = a.as_string() == b.as_string();
+            }
+            // bool == bool
+            else if (a.is_bool() && b.is_bool()) {
+                result = a.as_bool() == b.as_bool();
+            }
+            // Different types → error (strict type checking)
+            else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
 
-                // SQL NULL semantics: NULL != anything is false
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
-                bool result = false;
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() != b.as_int();
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val != b_val;
-                } else if (a.is_string() && b.is_string()) {
-                    result = a.as_string() != b.as_string();
-                } else if (a.is_bool() && b.is_bool()) {
-                    result = a.as_bool() != b.as_bool();
-                } else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
+        case IRExpr::OpCode::NEQ: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL != anything is false
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
 
-            case IRExpr::OpCode::LT: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+            bool result = false;
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() != b.as_int();
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val != b_val;
+            } else if (a.is_string() && b.is_string()) {
+                result = a.as_string() != b.as_string();
+            } else if (a.is_bool() && b.is_bool()) {
+                result = a.as_bool() != b.as_bool();
+            } else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
 
-                // SQL NULL semantics: NULL < anything is false
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
-                bool result = false;
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() < b.as_int();
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val < b_val;
-                } else if (a.is_string() && b.is_string()) {
-                    // Lexicographic string comparison
-                    result = a.as_string() < b.as_string();
-                } else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
+        case IRExpr::OpCode::LT: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL < anything is false
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
 
-            case IRExpr::OpCode::GT: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+            bool result = false;
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() < b.as_int();
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val < b_val;
+            } else if (a.is_string() && b.is_string()) {
+                // Lexicographic string comparison
+                result = a.as_string() < b.as_string();
+            } else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
 
-                // SQL NULL semantics: NULL > anything is false
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
-                bool result = false;
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() > b.as_int();
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val > b_val;
-                } else if (a.is_string() && b.is_string()) {
-                    result = a.as_string() > b.as_string();
-                } else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
+        case IRExpr::OpCode::GT: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL > anything is false
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
 
-            case IRExpr::OpCode::LTE: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+            bool result = false;
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() > b.as_int();
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val > b_val;
+            } else if (a.is_string() && b.is_string()) {
+                result = a.as_string() > b.as_string();
+            } else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
 
-                // SQL NULL semantics: NULL <= anything is false
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
-                bool result = false;
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() <= b.as_int();
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val <= b_val;
-                } else if (a.is_string() && b.is_string()) {
-                    result = a.as_string() <= b.as_string();
-                } else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
+        case IRExpr::OpCode::LTE: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL <= anything is false
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
 
-            case IRExpr::OpCode::GTE: {
-                Value b = stack_.back(); stack_.pop_back();
-                Value a = stack_.back(); stack_.pop_back();
+            bool result = false;
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() <= b.as_int();
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val <= b_val;
+            } else if (a.is_string() && b.is_string()) {
+                result = a.as_string() <= b.as_string();
+            } else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
 
-                // SQL NULL semantics: NULL >= anything is false
-                if (a.is_null() || b.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                    break;
-                }
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
-                bool result = false;
-                if (a.is_int() && b.is_int()) {
-                    result = a.as_int() >= b.as_int();
-                } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
-                    double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
-                    double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
-                    result = a_val >= b_val;
-                } else if (a.is_string() && b.is_string()) {
-                    result = a.as_string() >= b.as_string();
-                } else {
-                    throw RuntimeError("Cannot compare incompatible types");
-                }
+        case IRExpr::OpCode::GTE: {
+            Value b = stack_.back();
+            stack_.pop_back();
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                stack_.push_back(Value::make_bool(result));
+            // SQL NULL semantics: NULL >= anything is false
+            if (a.is_null() || b.is_null()) {
+                stack_.push_back(Value::make_bool(false));
                 break;
             }
+
+            bool result = false;
+            if (a.is_int() && b.is_int()) {
+                result = a.as_int() >= b.as_int();
+            } else if ((a.is_int() || a.is_double()) && (b.is_int() || b.is_double())) {
+                double a_val = a.is_double() ? a.as_double() : static_cast<double>(a.as_int());
+                double b_val = b.is_double() ? b.as_double() : static_cast<double>(b.as_int());
+                result = a_val >= b_val;
+            } else if (a.is_string() && b.is_string()) {
+                result = a.as_string() >= b.as_string();
+            } else {
+                throw RuntimeError("Cannot compare incompatible types");
+            }
+
+            stack_.push_back(Value::make_bool(result));
+            break;
+        }
 
             // ================================================================
             // Logical NOT - Boolean Negation
             // ================================================================
             // Pops bool (or int treated as bool), pushes negated result
 
-            case IRExpr::OpCode::NOT: {
-                Value a = stack_.back(); stack_.pop_back();
+        case IRExpr::OpCode::NOT: {
+            Value a = stack_.back();
+            stack_.pop_back();
 
-                // SQL NULL semantics: NOT NULL = NULL (represented as false in boolean context)
-                if (a.is_null()) {
-                    stack_.push_back(Value::make_bool(false));
-                }
-                else if (a.is_bool()) {
-                    stack_.push_back(Value::make_bool(!a.as_bool()));
-                } else if (a.is_int()) {
-                    // Treat 0 as false, non-zero as true (C-style)
-                    stack_.push_back(Value::make_bool(a.as_int() == 0));
-                } else {
-                    throw RuntimeError("Cannot apply NOT to non-boolean value");
-                }
-                break;
+            // SQL NULL semantics: NOT NULL = NULL (represented as false in boolean context)
+            if (a.is_null()) {
+                stack_.push_back(Value::make_bool(false));
+            } else if (a.is_bool()) {
+                stack_.push_back(Value::make_bool(!a.as_bool()));
+            } else if (a.is_int()) {
+                // Treat 0 as false, non-zero as true (C-style)
+                stack_.push_back(Value::make_bool(a.as_int() == 0));
+            } else {
+                throw RuntimeError("Cannot apply NOT to non-boolean value");
             }
+            break;
+        }
         }
     }
 
@@ -845,4 +925,4 @@ Value VM::eval_expr(const IRExpr& expr, size_t row_idx) {
     return stack_.back();
 }
 
-} // namespace joy
+}  // namespace joy

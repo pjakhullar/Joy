@@ -154,19 +154,28 @@ std::unique_ptr<Expr> Parser::parse_equality() {
 std::unique_ptr<Expr> Parser::parse_comparison() {
     auto expr = parse_term();
 
-    while (match(TokenType::LESS) || match(TokenType::GREATER) ||
-           match(TokenType::LESS_EQUAL) || match(TokenType::GREATER_EQUAL)) {
+    while (match(TokenType::LESS) || match(TokenType::GREATER) || match(TokenType::LESS_EQUAL) ||
+           match(TokenType::GREATER_EQUAL)) {
         Token op = previous();
         auto right = parse_term();
 
         // Map token type to AST operator
         BinaryOp bin_op;
         switch (op.type) {
-            case TokenType::LESS: bin_op = BinaryOp::Lt; break;
-            case TokenType::GREATER: bin_op = BinaryOp::Gt; break;
-            case TokenType::LESS_EQUAL: bin_op = BinaryOp::Lte; break;
-            case TokenType::GREATER_EQUAL: bin_op = BinaryOp::Gte; break;
-            default: error("Invalid comparison operator");
+        case TokenType::LESS:
+            bin_op = BinaryOp::Lt;
+            break;
+        case TokenType::GREATER:
+            bin_op = BinaryOp::Gt;
+            break;
+        case TokenType::LESS_EQUAL:
+            bin_op = BinaryOp::Lte;
+            break;
+        case TokenType::GREATER_EQUAL:
+            bin_op = BinaryOp::Gte;
+            break;
+        default:
+            error("Invalid comparison operator");
         }
 
         expr = make_binary(bin_op, std::move(expr), std::move(right));
@@ -319,7 +328,8 @@ bool Parser::check(TokenType type) const {
 // Consume and return current token
 // Advances current position unless at EOF
 Token Parser::advance() {
-    if (!is_at_end()) current_++;
+    if (!is_at_end())
+        current_++;
     return previous();
 }
 
@@ -338,7 +348,8 @@ bool Parser::match(TokenType type) {
 // This is used when a token is required (not optional)
 // Example: consume(LPAREN, "Expected '('") ensures we have a left paren
 Token Parser::consume(TokenType type, const std::string& message) {
-    if (check(type)) return advance();
+    if (check(type))
+        return advance();
     error(message);
 }
 
@@ -353,4 +364,4 @@ void Parser::error(const std::string& message) {
     throw ParseError(message, token.line, token.column);
 }
 
-} // namespace joy
+}  // namespace joy

@@ -52,11 +52,11 @@ struct IRExpr {
 // ============================================================================
 
 enum class OpType {
-    SCAN,             // Read CSV into table
-    FILTER,           // Filter rows by predicate (scalar, row-at-a-time)
-    VECTORIZED_FILTER,// Filter rows using vectorized operations (FAST!)
-    PROJECT,          // Select specific columns
-    WRITE             // Write table to CSV
+    SCAN,               // Read CSV into table
+    FILTER,             // Filter rows by predicate (scalar, row-at-a-time)
+    VECTORIZED_FILTER,  // Filter rows using vectorized operations (FAST!)
+    PROJECT,            // Select specific columns
+    WRITE               // Write table to CSV
 };
 
 // ============================================================================
@@ -113,4 +113,4 @@ struct ExecutionPlan {
     std::vector<PhysicalOp> operators;
 };
 
-} // namespace joy
+}  // namespace joy

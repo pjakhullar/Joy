@@ -1,9 +1,10 @@
 #pragma once
 
-#include "ast.hpp"
-#include "lexer.hpp"
 #include <stdexcept>
 #include <vector>
+
+#include "ast.hpp"
+#include "lexer.hpp"
 
 namespace joy {
 
@@ -14,12 +15,14 @@ namespace joy {
 class ParseError : public std::runtime_error {
 public:
     ParseError(const std::string& message, int line, int column)
-        : std::runtime_error(message),
-          line_(line),
-          column_(column) {}
+        : std::runtime_error(message), line_(line), column_(column) {}
 
-    int line() const { return line_; }
-    int column() const { return column_; }
+    int line() const {
+        return line_;
+    }
+    int column() const {
+        return column_;
+    }
 
 private:
     int line_;
@@ -74,4 +77,4 @@ private:
     [[noreturn]] void error(const std::string& message);
 };
 
-} // namespace joy
+}  // namespace joy

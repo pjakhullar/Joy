@@ -1,10 +1,11 @@
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
 #include "compiler.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "vm.hpp"
-#include <fstream>
-#include <iostream>
-#include <sstream>
 
 using namespace joy;
 
@@ -54,8 +55,8 @@ int main(int argc, char* argv[]) {
         return 0;
 
     } catch (const ParseError& e) {
-        std::cerr << "Parse error at line " << e.line() << ", column " << e.column()
-                  << ": " << e.what() << "\n";
+        std::cerr << "Parse error at line " << e.line() << ", column " << e.column() << ": "
+                  << e.what() << "\n";
         return 1;
     } catch (const CompileError& e) {
         std::cerr << "Compile error: " << e.what() << "\n";

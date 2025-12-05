@@ -1,4 +1,5 @@
 #include "compiler.hpp"
+
 #include <variant>
 
 namespace joy {
@@ -37,40 +38,42 @@ ExecutionPlan Compiler::compile(const Program& program) {
 PhysicalOp Compiler::compile_stmt(const Stmt& stmt) {
     PhysicalOp op;
 
-    std::visit([&](const auto& node) {
-        using T = std::decay_t<decltype(node)>;  // Get actual type without references
+    std::visit(
+        [&](const auto& node) {
+            using T = std::decay_t<decltype(node)>;  // Get actual type without references
 
-        // FROM "file.csv" → SCAN operator (load data from file)
-        if constexpr (std::is_same_v<T, FromStmt>) {
-            op.type = OpType::SCAN;
-            op.data = PhysicalOp::ScanOp{node.filepath};
-        }
-        // FILTER expr → Try vectorized path first, fall back to scalar
-        else if constexpr (std::is_same_v<T, FilterStmt>) {
-            // Try to detect simple vectorizable pattern: column op scalar
-            auto vec_pattern = try_vectorize_filter(*node.condition);
-            if (vec_pattern.has_value()) {
-                // Use fast vectorized path
-                op.type = OpType::VECTORIZED_FILTER;
-                op.data = vec_pattern.value();
-            } else {
-                // Fall back to scalar row-at-a-time execution
-                op.type = OpType::FILTER;
-                IRExpr predicate = compile_expr(*node.condition);
-                op.data = PhysicalOp::FilterOp{std::move(predicate)};
+            // FROM "file.csv" → SCAN operator (load data from file)
+            if constexpr (std::is_same_v<T, FromStmt>) {
+                op.type = OpType::SCAN;
+                op.data = PhysicalOp::ScanOp{node.filepath};
             }
-        }
-        // SELECT col1, col2 → PROJECT operator (column selection)
-        else if constexpr (std::is_same_v<T, SelectStmt>) {
-            op.type = OpType::PROJECT;
-            op.data = PhysicalOp::ProjectOp{node.columns};
-        }
-        // WRITE "file.csv" → WRITE operator (save data to file)
-        else if constexpr (std::is_same_v<T, WriteStmt>) {
-            op.type = OpType::WRITE;
-            op.data = PhysicalOp::WriteOp{node.filepath};
-        }
-    }, stmt.node);
+            // FILTER expr → Try vectorized path first, fall back to scalar
+            else if constexpr (std::is_same_v<T, FilterStmt>) {
+                // Try to detect simple vectorizable pattern: column op scalar
+                auto vec_pattern = try_vectorize_filter(*node.condition);
+                if (vec_pattern.has_value()) {
+                    // Use fast vectorized path
+                    op.type = OpType::VECTORIZED_FILTER;
+                    op.data = vec_pattern.value();
+                } else {
+                    // Fall back to scalar row-at-a-time execution
+                    op.type = OpType::FILTER;
+                    IRExpr predicate = compile_expr(*node.condition);
+                    op.data = PhysicalOp::FilterOp{std::move(predicate)};
+                }
+            }
+            // SELECT col1, col2 → PROJECT operator (column selection)
+            else if constexpr (std::is_same_v<T, SelectStmt>) {
+                op.type = OpType::PROJECT;
+                op.data = PhysicalOp::ProjectOp{node.columns};
+            }
+            // WRITE "file.csv" → WRITE operator (save data to file)
+            else if constexpr (std::is_same_v<T, WriteStmt>) {
+                op.type = OpType::WRITE;
+                op.data = PhysicalOp::WriteOp{node.filepath};
+            }
+        },
+        stmt.node);
 
     return op;
 }
@@ -95,22 +98,21 @@ IRExpr Compiler::compile_expr(const Expr& expr) {
     IRExpr result;
 
     // Pattern match on expression node type
-    std::visit([&](const auto& node) {
-        using T = std::decay_t<decltype(node)>;
+    std::visit(
+        [&](const auto& node) {
+            using T = std::decay_t<decltype(node)>;
 
-        if constexpr (std::is_same_v<T, LiteralExpr>) {
-            compile_literal(node, result);
-        }
-        else if constexpr (std::is_same_v<T, ColumnRef>) {
-            compile_column_ref(node, result);
-        }
-        else if constexpr (std::is_same_v<T, BinaryExpr>) {
-            compile_binary(node, result);
-        }
-        else if constexpr (std::is_same_v<T, UnaryExpr>) {
-            compile_unary(node, result);
-        }
-    }, expr.node);
+            if constexpr (std::is_same_v<T, LiteralExpr>) {
+                compile_literal(node, result);
+            } else if constexpr (std::is_same_v<T, ColumnRef>) {
+                compile_column_ref(node, result);
+            } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+                compile_binary(node, result);
+            } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+                compile_unary(node, result);
+            }
+        },
+        expr.node);
 
     return result;
 }
@@ -121,22 +123,21 @@ void Compiler::compile_literal(const LiteralExpr& node, IRExpr& result) {
     const auto& lit = node.value;
 
     // Emit appropriate PUSH instruction based on literal type
-    std::visit([&](const auto& val) {
-        using T = std::decay_t<decltype(val)>;
+    std::visit(
+        [&](const auto& val) {
+            using T = std::decay_t<decltype(val)>;
 
-        if constexpr (std::is_same_v<T, int64_t>) {
-            result.instructions.push_back({IRExpr::OpCode::PUSH_INT, val});
-        }
-        else if constexpr (std::is_same_v<T, double>) {
-            result.instructions.push_back({IRExpr::OpCode::PUSH_DOUBLE, val});
-        }
-        else if constexpr (std::is_same_v<T, std::string>) {
-            result.instructions.push_back({IRExpr::OpCode::PUSH_STRING, val});
-        }
-        else if constexpr (std::is_same_v<T, bool>) {
-            result.instructions.push_back({IRExpr::OpCode::PUSH_BOOL, val});
-        }
-    }, lit.value);
+            if constexpr (std::is_same_v<T, int64_t>) {
+                result.instructions.push_back({IRExpr::OpCode::PUSH_INT, val});
+            } else if constexpr (std::is_same_v<T, double>) {
+                result.instructions.push_back({IRExpr::OpCode::PUSH_DOUBLE, val});
+            } else if constexpr (std::is_same_v<T, std::string>) {
+                result.instructions.push_back({IRExpr::OpCode::PUSH_STRING, val});
+            } else if constexpr (std::is_same_v<T, bool>) {
+                result.instructions.push_back({IRExpr::OpCode::PUSH_BOOL, val});
+            }
+        },
+        lit.value);
 }
 
 // Compile column reference into LOAD_COLUMN instruction
@@ -159,30 +160,48 @@ void Compiler::compile_column_ref(const ColumnRef& node, IRExpr& result) {
 void Compiler::compile_binary(const BinaryExpr& node, IRExpr& result) {
     // Compile left operand (emits bytecode into result)
     IRExpr left = compile_expr(*node.left);
-    result.instructions.insert(result.instructions.end(),
-                               left.instructions.begin(),
+    result.instructions.insert(result.instructions.end(), left.instructions.begin(),
                                left.instructions.end());
 
     // Compile right operand (appends bytecode to result)
     IRExpr right = compile_expr(*node.right);
-    result.instructions.insert(result.instructions.end(),
-                               right.instructions.begin(),
+    result.instructions.insert(result.instructions.end(), right.instructions.begin(),
                                right.instructions.end());
 
     // Emit operator instruction (pops two values, pushes result)
     // Map AST operator enum to IR opcode
     IRExpr::OpCode op_code;
     switch (node.op) {
-        case BinaryOp::Add: op_code = IRExpr::OpCode::ADD; break;
-        case BinaryOp::Sub: op_code = IRExpr::OpCode::SUB; break;
-        case BinaryOp::Mul: op_code = IRExpr::OpCode::MUL; break;
-        case BinaryOp::Div: op_code = IRExpr::OpCode::DIV; break;
-        case BinaryOp::Eq:  op_code = IRExpr::OpCode::EQ; break;
-        case BinaryOp::Neq: op_code = IRExpr::OpCode::NEQ; break;
-        case BinaryOp::Lt:  op_code = IRExpr::OpCode::LT; break;
-        case BinaryOp::Gt:  op_code = IRExpr::OpCode::GT; break;
-        case BinaryOp::Lte: op_code = IRExpr::OpCode::LTE; break;
-        case BinaryOp::Gte: op_code = IRExpr::OpCode::GTE; break;
+    case BinaryOp::Add:
+        op_code = IRExpr::OpCode::ADD;
+        break;
+    case BinaryOp::Sub:
+        op_code = IRExpr::OpCode::SUB;
+        break;
+    case BinaryOp::Mul:
+        op_code = IRExpr::OpCode::MUL;
+        break;
+    case BinaryOp::Div:
+        op_code = IRExpr::OpCode::DIV;
+        break;
+    case BinaryOp::Eq:
+        op_code = IRExpr::OpCode::EQ;
+        break;
+    case BinaryOp::Neq:
+        op_code = IRExpr::OpCode::NEQ;
+        break;
+    case BinaryOp::Lt:
+        op_code = IRExpr::OpCode::LT;
+        break;
+    case BinaryOp::Gt:
+        op_code = IRExpr::OpCode::GT;
+        break;
+    case BinaryOp::Lte:
+        op_code = IRExpr::OpCode::LTE;
+        break;
+    case BinaryOp::Gte:
+        op_code = IRExpr::OpCode::GTE;
+        break;
     }
 
     // Operator instructions have no operand (they operate on stack)
@@ -197,15 +216,18 @@ void Compiler::compile_binary(const BinaryExpr& node, IRExpr& result) {
 void Compiler::compile_unary(const UnaryExpr& node, IRExpr& result) {
     // Compile operand first
     IRExpr operand = compile_expr(*node.operand);
-    result.instructions.insert(result.instructions.end(),
-                               operand.instructions.begin(),
+    result.instructions.insert(result.instructions.end(), operand.instructions.begin(),
                                operand.instructions.end());
 
     // Emit unary operator instruction (pops one value, pushes result)
     IRExpr::OpCode op_code;
     switch (node.op) {
-        case UnaryOp::Neg: op_code = IRExpr::OpCode::NEG; break;  // Numeric negation
-        case UnaryOp::Not: op_code = IRExpr::OpCode::NOT; break;  // Boolean negation
+    case UnaryOp::Neg:
+        op_code = IRExpr::OpCode::NEG;
+        break;  // Numeric negation
+    case UnaryOp::Not:
+        op_code = IRExpr::OpCode::NOT;
+        break;  // Boolean negation
     }
 
     result.instructions.push_back({op_code, 0});
@@ -227,9 +249,8 @@ std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(con
 
     // Check if operator is a comparison
     BinaryOp op = binary_node->op;
-    bool is_comparison = (op == BinaryOp::Gt || op == BinaryOp::Lt ||
-                         op == BinaryOp::Gte || op == BinaryOp::Lte ||
-                         op == BinaryOp::Eq || op == BinaryOp::Neq);
+    bool is_comparison = (op == BinaryOp::Gt || op == BinaryOp::Lt || op == BinaryOp::Gte ||
+                          op == BinaryOp::Lte || op == BinaryOp::Eq || op == BinaryOp::Neq);
     if (!is_comparison) {
         return std::nullopt;
     }
@@ -242,13 +263,26 @@ std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(con
         // Map AST operator to VectorOp
         VectorOp vec_op;
         switch (op) {
-            case BinaryOp::Gt:  vec_op = VectorOp::GT; break;
-            case BinaryOp::Lt:  vec_op = VectorOp::LT; break;
-            case BinaryOp::Gte: vec_op = VectorOp::GTE; break;
-            case BinaryOp::Lte: vec_op = VectorOp::LTE; break;
-            case BinaryOp::Eq:  vec_op = VectorOp::EQ; break;
-            case BinaryOp::Neq: vec_op = VectorOp::NEQ; break;
-            default: return std::nullopt;
+        case BinaryOp::Gt:
+            vec_op = VectorOp::GT;
+            break;
+        case BinaryOp::Lt:
+            vec_op = VectorOp::LT;
+            break;
+        case BinaryOp::Gte:
+            vec_op = VectorOp::GTE;
+            break;
+        case BinaryOp::Lte:
+            vec_op = VectorOp::LTE;
+            break;
+        case BinaryOp::Eq:
+            vec_op = VectorOp::EQ;
+            break;
+        case BinaryOp::Neq:
+            vec_op = VectorOp::NEQ;
+            break;
+        default:
+            return std::nullopt;
         }
 
         // Extract literal value
@@ -279,13 +313,26 @@ std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(con
         // Reverse the operator: 30 < age → age > 30
         VectorOp vec_op;
         switch (op) {
-            case BinaryOp::Gt:  vec_op = VectorOp::LT; break;   // 30 > age → age < 30
-            case BinaryOp::Lt:  vec_op = VectorOp::GT; break;   // 30 < age → age > 30
-            case BinaryOp::Gte: vec_op = VectorOp::LTE; break;  // 30 >= age → age <= 30
-            case BinaryOp::Lte: vec_op = VectorOp::GTE; break;  // 30 <= age → age >= 30
-            case BinaryOp::Eq:  vec_op = VectorOp::EQ; break;   // 30 == age → age == 30
-            case BinaryOp::Neq: vec_op = VectorOp::NEQ; break;  // 30 != age → age != 30
-            default: return std::nullopt;
+        case BinaryOp::Gt:
+            vec_op = VectorOp::LT;
+            break;  // 30 > age → age < 30
+        case BinaryOp::Lt:
+            vec_op = VectorOp::GT;
+            break;  // 30 < age → age > 30
+        case BinaryOp::Gte:
+            vec_op = VectorOp::LTE;
+            break;  // 30 >= age → age <= 30
+        case BinaryOp::Lte:
+            vec_op = VectorOp::GTE;
+            break;  // 30 <= age → age >= 30
+        case BinaryOp::Eq:
+            vec_op = VectorOp::EQ;
+            break;  // 30 == age → age == 30
+        case BinaryOp::Neq:
+            vec_op = VectorOp::NEQ;
+            break;  // 30 != age → age != 30
+        default:
+            return std::nullopt;
         }
 
         PhysicalOp::VectorizedFilterOp result;
@@ -310,4 +357,4 @@ std::optional<PhysicalOp::VectorizedFilterOp> Compiler::try_vectorize_filter(con
     return std::nullopt;
 }
 
-} // namespace joy
+}  // namespace joy

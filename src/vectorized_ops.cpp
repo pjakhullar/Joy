@@ -1,4 +1,5 @@
 #include "vectorized_ops.hpp"
+
 #include <algorithm>
 
 namespace joy {
@@ -225,4 +226,4 @@ SelectionVector vec_neq_string(const Column& col, const std::string& value) {
     return result;
 }
 
-} // namespace joy
+}  // namespace joy

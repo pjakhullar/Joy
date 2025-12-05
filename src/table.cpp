@@ -1,8 +1,9 @@
 #include "table.hpp"
+
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#include <algorithm>
 
 namespace joy {
 
@@ -29,9 +30,11 @@ void Column::reserve(size_t n) {
 // Check if value at index is NULL
 // Returns true if the value is std::nullopt (SQL NULL)
 bool Column::is_null(size_t idx) const {
-    return std::visit([idx](const auto& vec) {
-        return !vec[idx].has_value();  // true if nullopt
-    }, data);
+    return std::visit(
+        [idx](const auto& vec) {
+            return !vec[idx].has_value();  // true if nullopt
+        },
+        data);
 }
 
 // Type-specific getters: Extract value at index
@@ -174,7 +177,8 @@ static std::vector<std::string> split(const std::string& s, char delim) {
 // Example: trim("  hello  ") -> "hello"
 static std::string trim(const std::string& s) {
     auto start = s.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return "";  // All whitespace
+    if (start == std::string::npos)
+        return "";  // All whitespace
     auto end = s.find_last_not_of(" \t\r\n");
     return s.substr(start, end - start + 1);
 }
@@ -188,7 +192,8 @@ static ColumnType infer_type(const std::vector<std::string>& values) {
     // Find first non-empty value for type inference
     for (const auto& val : values) {
         std::string v = trim(val);
-        if (v.empty()) continue;  // Skip NULL values
+        if (v.empty())
+            continue;  // Skip NULL values
 
         // Try to parse as int64
         try {
@@ -197,7 +202,8 @@ static ColumnType infer_type(const std::vector<std::string>& values) {
             if (pos == v.size()) {  // Entire string was parsed
                 return ColumnType::INT64;
             }
-        } catch (...) {}  // Not an integer
+        } catch (...) {
+        }  // Not an integer
 
         // Try to parse as double
         try {
@@ -206,7 +212,8 @@ static ColumnType infer_type(const std::vector<std::string>& values) {
             if (pos == v.size()) {  // Entire string was parsed
                 return ColumnType::DOUBLE;
             }
-        } catch (...) {}  // Not a double
+        } catch (...) {
+        }  // Not a double
 
         // If first non-empty value isn't numeric, it's string
         return ColumnType::STRING;
@@ -226,18 +233,18 @@ static void append_value(Column& col, const std::string& value) {
     // SQL NULL semantics: empty cells are NULL
     if (v.empty()) {
         switch (col.type) {
-            case ColumnType::INT64:
-                col.append_int(std::nullopt);
-                break;
-            case ColumnType::DOUBLE:
-                col.append_double(std::nullopt);
-                break;
-            case ColumnType::STRING:
-                col.append_string(std::nullopt);
-                break;
-            case ColumnType::BOOL:
-                col.append_bool(std::nullopt);
-                break;
+        case ColumnType::INT64:
+            col.append_int(std::nullopt);
+            break;
+        case ColumnType::DOUBLE:
+            col.append_double(std::nullopt);
+            break;
+        case ColumnType::STRING:
+            col.append_string(std::nullopt);
+            break;
+        case ColumnType::BOOL:
+            col.append_bool(std::nullopt);
+            break;
         }
         return;
     }
@@ -245,19 +252,19 @@ static void append_value(Column& col, const std::string& value) {
     // Non-empty values: parse according to column type
     try {
         switch (col.type) {
-            case ColumnType::INT64:
-                col.append_int(std::stoll(v));
-                break;
-            case ColumnType::DOUBLE:
-                col.append_double(std::stod(v));
-                break;
-            case ColumnType::STRING:
-                col.append_string(v);
-                break;
-            case ColumnType::BOOL:
-                // "true" or "1" -> true, anything else -> false
-                col.append_bool(v == "true" || v == "1");
-                break;
+        case ColumnType::INT64:
+            col.append_int(std::stoll(v));
+            break;
+        case ColumnType::DOUBLE:
+            col.append_double(std::stod(v));
+            break;
+        case ColumnType::STRING:
+            col.append_string(v);
+            break;
+        case ColumnType::BOOL:
+            // "true" or "1" -> true, anything else -> false
+            col.append_bool(v == "true" || v == "1");
+            break;
         }
     } catch (const std::exception& e) {
         // Type coercion failed (e.g., "abc" in INT64 column)
@@ -293,7 +300,8 @@ Table read_csv(const std::string& filepath) {
     // Collect all data rows first to infer types from non-NULL values
     std::vector<std::vector<std::string>> all_rows;
     while (std::getline(file, line)) {
-        if (line.empty()) continue;  // Skip blank lines
+        if (line.empty())
+            continue;  // Skip blank lines
         all_rows.push_back(split(line, ','));
     }
 
@@ -313,7 +321,8 @@ Table read_csv(const std::string& filepath) {
     // Verify all rows have same column count
     for (size_t row = 0; row < all_rows.size(); ++row) {
         if (all_rows[row].size() != headers.size()) {
-            throw std::runtime_error("Column count mismatch in CSV at row " + std::to_string(row + 2));
+            throw std::runtime_error("Column count mismatch in CSV at row " +
+                                     std::to_string(row + 2));
         }
     }
 
@@ -333,18 +342,18 @@ Table read_csv(const std::string& filepath) {
         // Initialize variant with the appropriate std::optional vector type
         // This is necessary because std::variant needs an active alternative
         switch (col.type) {
-            case ColumnType::INT64:
-                col.data = std::vector<std::optional<int64_t>>{};
-                break;
-            case ColumnType::DOUBLE:
-                col.data = std::vector<std::optional<double>>{};
-                break;
-            case ColumnType::STRING:
-                col.data = std::vector<std::optional<std::string>>{};
-                break;
-            case ColumnType::BOOL:
-                col.data = std::vector<std::optional<bool>>{};
-                break;
+        case ColumnType::INT64:
+            col.data = std::vector<std::optional<int64_t>>{};
+            break;
+        case ColumnType::DOUBLE:
+            col.data = std::vector<std::optional<double>>{};
+            break;
+        case ColumnType::STRING:
+            col.data = std::vector<std::optional<std::string>>{};
+            break;
+        case ColumnType::BOOL:
+            col.data = std::vector<std::optional<bool>>{};
+            break;
         }
 
         table.add_column(std::move(col));
@@ -373,7 +382,8 @@ void write_csv(const std::string& filepath, const Table& table) {
 
     // Write header row (column names)
     for (size_t i = 0; i < table.columns.size(); ++i) {
-        if (i > 0) file << ",";  // Comma separator between columns
+        if (i > 0)
+            file << ",";  // Comma separator between columns
         file << table.columns[i].name;
     }
     file << "\n";
@@ -384,7 +394,8 @@ void write_csv(const std::string& filepath, const Table& table) {
     // Even though data is stored column-wise, we write row-wise for CSV format
     for (size_t row = 0; row < table.num_rows; ++row) {
         for (size_t col_idx = 0; col_idx < table.columns.size(); ++col_idx) {
-            if (col_idx > 0) file << ",";
+            if (col_idx > 0)
+                file << ",";
 
             const Column& col = table.columns[col_idx];
 
@@ -396,23 +407,23 @@ void write_csv(const std::string& filepath, const Table& table) {
 
             // Format value based on column type
             switch (col.type) {
-                case ColumnType::INT64:
-                    file << col.get_int(row);
-                    break;
-                case ColumnType::DOUBLE:
-                    file << col.get_double(row);
-                    break;
-                case ColumnType::STRING:
-                    file << col.get_string(row);
-                    // TODO: Quote strings containing commas
-                    break;
-                case ColumnType::BOOL:
-                    file << (col.get_bool(row) ? "true" : "false");
-                    break;
+            case ColumnType::INT64:
+                file << col.get_int(row);
+                break;
+            case ColumnType::DOUBLE:
+                file << col.get_double(row);
+                break;
+            case ColumnType::STRING:
+                file << col.get_string(row);
+                // TODO: Quote strings containing commas
+                break;
+            case ColumnType::BOOL:
+                file << (col.get_bool(row) ? "true" : "false");
+                break;
             }
         }
         file << "\n";
     }
 }
 
-} // namespace joy
+}  // namespace joy

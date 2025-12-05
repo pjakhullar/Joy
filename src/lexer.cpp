@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+
 #include <cctype>
 #include <unordered_map>
 
@@ -11,11 +12,8 @@ namespace joy {
 // This allows O(1) lookup to distinguish keywords from identifiers.
 // Example: "from" -> TokenType::FROM, but "age" -> TokenType::IDENT
 static const std::unordered_map<std::string, TokenType> keywords = {
-    {"from", TokenType::FROM},
-    {"filter", TokenType::FILTER},
-    {"select", TokenType::SELECT},
-    {"write", TokenType::WRITE},
-    {"not", TokenType::NOT},
+    {"from", TokenType::FROM},   {"filter", TokenType::FILTER}, {"select", TokenType::SELECT},
+    {"write", TokenType::WRITE}, {"not", TokenType::NOT},
 };
 
 // ============================================================================
@@ -81,32 +79,43 @@ Token Lexer::scan_token() {
 
     // Single-character and two-character operators
     switch (c) {
-        // Single-character operators (unambiguous)
-        case '+': return make_token(TokenType::PLUS);
-        case '-': return make_token(TokenType::MINUS);
-        case '*': return make_token(TokenType::STAR);
-        case '/': return make_token(TokenType::SLASH);
-        case ',': return make_token(TokenType::COMMA);
-        case '(': return make_token(TokenType::LPAREN);
-        case ')': return make_token(TokenType::RPAREN);
+    // Single-character operators (unambiguous)
+    case '+':
+        return make_token(TokenType::PLUS);
+    case '-':
+        return make_token(TokenType::MINUS);
+    case '*':
+        return make_token(TokenType::STAR);
+    case '/':
+        return make_token(TokenType::SLASH);
+    case ',':
+        return make_token(TokenType::COMMA);
+    case '(':
+        return make_token(TokenType::LPAREN);
+    case ')':
+        return make_token(TokenType::RPAREN);
 
-        // Two-character operators (need lookahead)
-        case '<':
-            // Could be '<' or '<='
-            if (match('=')) return make_token(TokenType::LESS_EQUAL);
-            return make_token(TokenType::LESS);
-        case '>':
-            // Could be '>' or '>='
-            if (match('=')) return make_token(TokenType::GREATER_EQUAL);
-            return make_token(TokenType::GREATER);
-        case '=':
-            // Must be '==' (single '=' is not allowed in our language)
-            if (match('=')) return make_token(TokenType::EQUAL_EQUAL);
-            return make_error("Unexpected character '='");
-        case '!':
-            // Must be '!=' (single '!' is not allowed, use 'not')
-            if (match('=')) return make_token(TokenType::BANG_EQUAL);
-            return make_error("Unexpected character '!'");
+    // Two-character operators (need lookahead)
+    case '<':
+        // Could be '<' or '<='
+        if (match('='))
+            return make_token(TokenType::LESS_EQUAL);
+        return make_token(TokenType::LESS);
+    case '>':
+        // Could be '>' or '>='
+        if (match('='))
+            return make_token(TokenType::GREATER_EQUAL);
+        return make_token(TokenType::GREATER);
+    case '=':
+        // Must be '==' (single '=' is not allowed in our language)
+        if (match('='))
+            return make_token(TokenType::EQUAL_EQUAL);
+        return make_error("Unexpected character '='");
+    case '!':
+        // Must be '!=' (single '!' is not allowed, use 'not')
+        if (match('='))
+            return make_token(TokenType::BANG_EQUAL);
+        return make_error("Unexpected character '!'");
     }
 
     // If we get here, it's an unrecognized character
@@ -132,14 +141,16 @@ char Lexer::advance() {
 // Look at current character without consuming it
 // Returns '\0' if at end (sentinel value)
 char Lexer::peek() const {
-    if (is_at_end()) return '\0';
+    if (is_at_end())
+        return '\0';
     return source_[current_];
 }
 
 // Look ahead two characters (for number parsing: "1.5")
 // Used to distinguish "1." from "1.5" (only latter is a double)
 char Lexer::peek_next() const {
-    if (current_ + 1 >= source_.size()) return '\0';
+    if (current_ + 1 >= source_.size())
+        return '\0';
     return source_[current_ + 1];
 }
 
@@ -195,7 +206,7 @@ Token Lexer::scan_string() {
         return make_error("Unterminated string");
     }
 
-    advance(); // Consume closing quote
+    advance();  // Consume closing quote
 
     // Extract string content (excluding quotes)
     // start_ points to opening ", current_ is after closing "
@@ -275,24 +286,24 @@ void Lexer::skip_whitespace() {
     while (!is_at_end()) {
         char c = peek();
         switch (c) {
-            case ' ':
-            case '\r':
-            case '\t':
-                advance();  // Skip whitespace
-                break;
-            case '\n':
-                line_++;      // Track line numbers
-                column_ = 0;  // Reset column at start of line
+        case ' ':
+        case '\r':
+        case '\t':
+            advance();  // Skip whitespace
+            break;
+        case '\n':
+            line_++;      // Track line numbers
+            column_ = 0;  // Reset column at start of line
+            advance();
+            break;
+        case '#':
+            // Comment: skip to end of line
+            while (peek() != '\n' && !is_at_end()) {
                 advance();
-                break;
-            case '#':
-                // Comment: skip to end of line
-                while (peek() != '\n' && !is_at_end()) {
-                    advance();
-                }
-                break;
-            default:
-                return;  // Found a non-whitespace character
+            }
+            break;
+        default:
+            return;  // Found a non-whitespace character
         }
     }
 }
@@ -305,31 +316,55 @@ void Lexer::skip_whitespace() {
 // Used by test utilities and error reporting
 const char* token_type_to_string(TokenType type) {
     switch (type) {
-        case TokenType::FROM: return "FROM";
-        case TokenType::FILTER: return "FILTER";
-        case TokenType::SELECT: return "SELECT";
-        case TokenType::WRITE: return "WRITE";
-        case TokenType::NOT: return "NOT";
-        case TokenType::IDENT: return "IDENT";
-        case TokenType::NUMBER: return "NUMBER";
-        case TokenType::STRING: return "STRING";
-        case TokenType::PLUS: return "PLUS";
-        case TokenType::MINUS: return "MINUS";
-        case TokenType::STAR: return "STAR";
-        case TokenType::SLASH: return "SLASH";
-        case TokenType::EQUAL_EQUAL: return "EQUAL_EQUAL";
-        case TokenType::BANG_EQUAL: return "BANG_EQUAL";
-        case TokenType::LESS: return "LESS";
-        case TokenType::GREATER: return "GREATER";
-        case TokenType::LESS_EQUAL: return "LESS_EQUAL";
-        case TokenType::GREATER_EQUAL: return "GREATER_EQUAL";
-        case TokenType::COMMA: return "COMMA";
-        case TokenType::LPAREN: return "LPAREN";
-        case TokenType::RPAREN: return "RPAREN";
-        case TokenType::END_OF_FILE: return "EOF";
-        case TokenType::ERROR: return "ERROR";
-        default: return "UNKNOWN";
+    case TokenType::FROM:
+        return "FROM";
+    case TokenType::FILTER:
+        return "FILTER";
+    case TokenType::SELECT:
+        return "SELECT";
+    case TokenType::WRITE:
+        return "WRITE";
+    case TokenType::NOT:
+        return "NOT";
+    case TokenType::IDENT:
+        return "IDENT";
+    case TokenType::NUMBER:
+        return "NUMBER";
+    case TokenType::STRING:
+        return "STRING";
+    case TokenType::PLUS:
+        return "PLUS";
+    case TokenType::MINUS:
+        return "MINUS";
+    case TokenType::STAR:
+        return "STAR";
+    case TokenType::SLASH:
+        return "SLASH";
+    case TokenType::EQUAL_EQUAL:
+        return "EQUAL_EQUAL";
+    case TokenType::BANG_EQUAL:
+        return "BANG_EQUAL";
+    case TokenType::LESS:
+        return "LESS";
+    case TokenType::GREATER:
+        return "GREATER";
+    case TokenType::LESS_EQUAL:
+        return "LESS_EQUAL";
+    case TokenType::GREATER_EQUAL:
+        return "GREATER_EQUAL";
+    case TokenType::COMMA:
+        return "COMMA";
+    case TokenType::LPAREN:
+        return "LPAREN";
+    case TokenType::RPAREN:
+        return "RPAREN";
+    case TokenType::END_OF_FILE:
+        return "EOF";
+    case TokenType::ERROR:
+        return "ERROR";
+    default:
+        return "UNKNOWN";
     }
 }
 
-} // namespace joy
+}  // namespace joy

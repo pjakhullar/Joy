@@ -1,8 +1,9 @@
 #pragma once
 
-#include "table.hpp"
-#include <vector>
 #include <cstdint>
+#include <vector>
+
+#include "table.hpp"
 
 namespace joy {
 
@@ -64,4 +65,4 @@ SelectionVector vec_neq_int64(const Column& col, int64_t value);
 SelectionVector vec_neq_double(const Column& col, double value);
 SelectionVector vec_neq_string(const Column& col, const std::string& value);
 
-} // namespace joy
+}  // namespace joy

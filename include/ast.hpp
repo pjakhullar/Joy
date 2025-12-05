@@ -33,12 +33,7 @@ enum class UnaryOp {
     Not   // not x
 };
 
-enum class ValueType {
-    Int,
-    Double,
-    String,
-    Bool
-};
+enum class ValueType { Int, Double, String, Bool };
 
 // Literal value
 struct Literal {
@@ -68,12 +63,7 @@ struct UnaryExpr {
 
 // Expression wrapper
 struct Expr {
-    std::variant<
-        LiteralExpr,
-        ColumnRef,
-        BinaryExpr,
-        UnaryExpr
-    > node;
+    std::variant<LiteralExpr, ColumnRef, BinaryExpr, UnaryExpr> node;
 };
 
 // ============================================================================
@@ -98,12 +88,7 @@ struct WriteStmt {
 
 // Statement wrapper
 struct Stmt {
-    std::variant<
-        FromStmt,
-        FilterStmt,
-        SelectStmt,
-        WriteStmt
-    > node;
+    std::variant<FromStmt, FilterStmt, SelectStmt, WriteStmt> node;
 };
 
 // ============================================================================
@@ -148,19 +133,17 @@ inline std::unique_ptr<Expr> make_column_ref(std::string name) {
     return expr;
 }
 
-inline std::unique_ptr<Expr> make_binary(BinaryOp op,
-                                         std::unique_ptr<Expr> left,
+inline std::unique_ptr<Expr> make_binary(BinaryOp op, std::unique_ptr<Expr> left,
                                          std::unique_ptr<Expr> right) {
     auto expr = std::make_unique<Expr>();
     expr->node = BinaryExpr{op, std::move(left), std::move(right)};
     return expr;
 }
 
-inline std::unique_ptr<Expr> make_unary(UnaryOp op,
-                                        std::unique_ptr<Expr> operand) {
+inline std::unique_ptr<Expr> make_unary(UnaryOp op, std::unique_ptr<Expr> operand) {
     auto expr = std::make_unique<Expr>();
     expr->node = UnaryExpr{op, std::move(operand)};
     return expr;
 }
 
-} // namespace joy
+}  // namespace joy

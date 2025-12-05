@@ -23,21 +23,21 @@ enum class TokenType {
     STRING,
 
     // Operators
-    PLUS,       // +
-    MINUS,      // -
-    STAR,       // *
-    SLASH,      // /
-    EQUAL_EQUAL,// ==
-    BANG_EQUAL, // !=
-    LESS,       // <
-    GREATER,    // >
-    LESS_EQUAL, // <=
-    GREATER_EQUAL, // >=
+    PLUS,           // +
+    MINUS,          // -
+    STAR,           // *
+    SLASH,          // /
+    EQUAL_EQUAL,    // ==
+    BANG_EQUAL,     // !=
+    LESS,           // <
+    GREATER,        // >
+    LESS_EQUAL,     // <=
+    GREATER_EQUAL,  // >=
 
     // Punctuation
-    COMMA,      // ,
-    LPAREN,     // (
-    RPAREN,     // )
+    COMMA,   // ,
+    LPAREN,  // (
+    RPAREN,  // )
 
     // Special
     END_OF_FILE,
@@ -107,4 +107,4 @@ private:
 
 const char* token_type_to_string(TokenType type);
 
-} // namespace joy
+}  // namespace joy

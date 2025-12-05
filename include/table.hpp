@@ -12,12 +12,7 @@ namespace joy {
 // Column-major Table Representation with NULL support
 // ============================================================================
 
-enum class ColumnType {
-    INT64,
-    DOUBLE,
-    STRING,
-    BOOL
-};
+enum class ColumnType { INT64, DOUBLE, STRING, BOOL };
 
 struct Column {
     std::string name;
@@ -25,12 +20,9 @@ struct Column {
 
     // Type-erased storage using std::optional for NULL support
     // std::nullopt represents NULL values (SQL-style NULL semantics)
-    std::variant<
-        std::vector<std::optional<int64_t>>,
-        std::vector<std::optional<double>>,
-        std::vector<std::optional<std::string>>,
-        std::vector<std::optional<bool>>
-    > data;
+    std::variant<std::vector<std::optional<int64_t>>, std::vector<std::optional<double>>,
+                 std::vector<std::optional<std::string>>, std::vector<std::optional<bool>>>
+        data;
 
     size_t size() const;
     void reserve(size_t n);
@@ -79,4 +71,4 @@ Table read_csv(const std::string& filepath);
 // Write table to CSV file
 void write_csv(const std::string& filepath, const Table& table);
 
-} // namespace joy
+}  // namespace joy

@@ -1,10 +1,11 @@
 #pragma once
 
+#include <optional>
+#include <stdexcept>
+
 #include "ast.hpp"
 #include "ir.hpp"
 #include "table.hpp"
-#include <stdexcept>
-#include <optional>
 
 namespace joy {
 
@@ -14,8 +15,7 @@ namespace joy {
 
 class CompileError : public std::runtime_error {
 public:
-    explicit CompileError(const std::string& message)
-        : std::runtime_error(message) {}
+    explicit CompileError(const std::string& message) : std::runtime_error(message) {}
 };
 
 // ============================================================================
@@ -46,4 +46,4 @@ private:
     std::optional<PhysicalOp::VectorizedFilterOp> try_vectorize_filter(const Expr& expr);
 };
 
-} // namespace joy
+}  // namespace joy
